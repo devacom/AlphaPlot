@@ -97,9 +97,13 @@ In alphabetical order.
 - [Filipe](https://github.com/filipestevao) ([Linux AppImage](https://github.com/filipestevao/AlphaPlot-AppImage/releases/download/v1.011/AlphaPlot-1.011.glibc2.29-x86_64.AppImage))
 
 Ubuntu debian package 
+
 sudo add-apt-repository ppa:devacom/science
+
 sudo apt-get update
+
 sudo apt install alphaplot
+
 
 ## SciDAVis & QtiPlot Developers
 
