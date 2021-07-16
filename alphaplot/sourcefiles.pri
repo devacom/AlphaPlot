@@ -5,10 +5,12 @@
 ###################### HEADERS ##############################################
 
 HEADERS  += src/ApplicationWindow.h \
+            src/core/AppearanceManager.h \
             src/core/IconLoader.h \
             src/core/Utilities.h \
             src/core/widgets/MyTreeWidget.h \
             src/core/widgets/propertyeditor.h \
+            src/widgets/ColorLabel.h \
             src/globals.h\
             src/scripting/MuParserScript.h \
             src/scripting/MuParserScripting.h \
@@ -75,14 +77,23 @@ HEADERS  += src/ApplicationWindow.h \
             src/scripting/widgets/ConsoleWidget.h \
             src/scripting/SyntaxHighlighter.h \
             src/widgets/aSettingsListView.h \
+            src/widgets/CharacterWidget.h \
+            src/widgets/CustomCharacterDialog.h \
+            src/ui/CharacterMapWidget.h \
             src/ui/ExportDialog.h \
             src/ui/ExtensibleFileDialog.h \
             src/ui/GeneralApplicationSettings.h \
             src/ui/GeneralAppreanceSettings.h \
+            src/ui/GeneralConfirmationSettings.h \
             src/ui/SettingsPage.h \
             src/ui/SettingsDialog.h \
             src/ui/PropertiesDialog.h \
             src/ui/RandomDistributionDialog.h \
+            src/ui/FittingSettings.h \
+            src/ui/GeneralNumericFormatSettings.h \
+            src/ui/TableBasicSettings.h \
+            src/ui/TableColorSettings.h \
+            src/ui/TableFontSettings.h \
             src/About.h \
             src/core/AprojHandler.h \
             src/future/lib/XmlStreamWriter.h \
@@ -91,10 +102,12 @@ HEADERS  += src/ApplicationWindow.h \
 ###################### SOURCES ##############################################
 
 SOURCES  += src/ApplicationWindow.cpp \
+            src/core/AppearanceManager.cpp \
             src/core/IconLoader.cpp \
             src/core/Utilities.cpp \
             src/core/widgets/MyTreeWidget.cpp \
             src/core/widgets/propertyeditor.cpp \
+            src/widgets/ColorLabel.cpp \
             src/scripting/MuParserScript.cpp \
             src/scripting/MuParserScripting.cpp \
             src/scripting/MyParser.cpp\
@@ -160,14 +173,23 @@ SOURCES  += src/ApplicationWindow.cpp \
             src/scripting/widgets/ConsoleWidget.cpp \
             src/scripting/SyntaxHighlighter.cpp \
             src/widgets/aSettingsListView.cpp \
+            src/widgets/CharacterWidget.cpp \
+            src/widgets/CustomCharacterDialog.cpp \
+            src/ui/CharacterMapWidget.cpp \
             src/ui/ExportDialog.cpp \
             src/ui/ExtensibleFileDialog.cpp \
             src/ui/GeneralApplicationSettings.cpp \
             src/ui/GeneralAppreanceSettings.cpp \
+            src/ui/GeneralConfirmationSettings.cpp \
             src/ui/SettingsPage.cpp \
             src/ui/SettingsDialog.cpp \
             src/ui/PropertiesDialog.cpp \
             src/ui/RandomDistributionDialog.cpp \
+            src/ui/FittingSettings.cpp \
+            src/ui/GeneralNumericFormatSettings.cpp \
+            src/ui/TableBasicSettings.cpp \
+            src/ui/TableColorSettings.cpp \
+            src/ui/TableFontSettings.cpp \
             src/About.cpp \
             src/main.cpp \
             src/core/AprojHandler.cpp \
@@ -177,8 +199,15 @@ SOURCES  += src/ApplicationWindow.cpp \
 FORMS        += src/ApplicationWindow.ui \
                 src/core/widgets/propertyeditor.ui \
                 src/scripting/widgets/ConsoleWidget.ui \
+                src/widgets/CustomCharacterDialog.ui \
                 src/ui/GeneralApplicationSettings.ui \
                 src/ui/GeneralAppreanceSettings.ui \
+                src/ui/GeneralConfirmationSettings.ui \
+                src/ui/FittingSettings.ui \
+                src/ui/GeneralNumericFormatSettings.ui \
+                src/ui/TableBasicSettings.ui \
+                src/ui/TableColorSettings.ui \
+                src/ui/TableFontSettings.ui \
                 src/ui/SettingsDialog.ui \
                 src/ui/PropertiesDialog.ui \
                 src/ui/RandomDistributionDialog.ui \
@@ -323,6 +352,7 @@ HEADERS     += src/2Dplot/widgets/LayoutButton2D.h \
                src/2Dplot/LayoutInset2D.h \
                src/2Dplot/Legend2D.h \
                src/2Dplot/LineSpecial2D.h \
+               src/2Dplot/PickerTool2D.h \
                src/2Dplot/Plot2D.h \
                src/2Dplot/StatBox2D.h \
                src/2Dplot/Vector2D.h \
@@ -351,6 +381,7 @@ SOURCES     += src/2Dplot/widgets/LayoutButton2D.cpp \
                src/2Dplot/LayoutInset2D.cpp \
                src/2Dplot/Legend2D.cpp \
                src/2Dplot/LineSpecial2D.cpp \
+               src/2Dplot/PickerTool2D.cpp \
                src/2Dplot/Plot2D.cpp \
                src/2Dplot/StatBox2D.cpp \
                src/2Dplot/Vector2D.cpp \

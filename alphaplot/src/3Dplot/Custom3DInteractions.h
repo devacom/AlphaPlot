@@ -15,10 +15,16 @@ class Custom3DInteractions : public QAbstract3DInputHandler {
   virtual void mouseMoveEvent(QMouseEvent *event, const QPoint &mousePos);
   virtual void wheelEvent(QWheelEvent *event);
 
+signals:
+  void showContextMenu();
+  void activateParentWindow();
+
  private:
-  QPointF mousepoint_;
+  QPoint mousepoint_;
   bool mouserotation_;
   float zoomfactor_;
+  float xrotation_;
+  float yrotation_;
   static const int deltazoom_;
 };
 

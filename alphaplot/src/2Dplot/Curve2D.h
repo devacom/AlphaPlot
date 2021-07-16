@@ -16,8 +16,8 @@ class Curve2D : public QCPCurve {
   enum class Curve2DType { Curve, Spline };
   Curve2D(Curve2DType curve2dtype, Table *table, Column *xcol, Column *ycol,
           int from, int to, Axis2D *xAxis, Axis2D *yAxis);
-  Curve2D(QVector<double> *xdata, QVector<double> *ydata, Axis2D *xAxis,
-          Axis2D *yAxis);
+  Curve2D(const PlotData::FunctionData funcdata, QVector<double> *xdata,
+          QVector<double> *ydata, Axis2D *xAxis, Axis2D *yAxis);
   void init();
   ~Curve2D();
 
@@ -56,10 +56,12 @@ class Curve2D : public QCPCurve {
   Graph2DCommon::PlotType getplottype_cplot() const { return type_; }
   Curve2D::Curve2DType getcurvetype_cplot() const { return curve2dtype_; }
   DataBlockCurve *getdatablock_cplot() const { return curvedata_; }
+  const PlotData::FunctionData getfuncdata_cplot() const { return funcdata_; }
   QPen getSplinePen() { return splinePen_; }
   QBrush getSplineBrush() { return splineBrush_; }
   ErrorBar2D *getxerrorbar_curveplot() { return xerrorbar_; }
   ErrorBar2D *getyerrorbar_curveplot() { return yerrorbar_; }
+  QIcon getIcon() const { return icon_; }
   // Setters
   void setxaxis_cplot(Axis2D *axis);
   void setyaxis_cplot(Axis2D *axis);
@@ -80,7 +82,6 @@ class Curve2D : public QCPCurve {
   void setlinefillstatus_cplot(const bool value);
   void setlegendvisible_cplot(const bool value);
   void setlegendtext_cplot(const QString &text);
-  void setpicker_cplot(const Graph2DCommon::Picker picker);
 
   void save(XmlStreamWriter *xmlwriter, int xaxis, int yaxis);
   bool load(XmlStreamReader *xmlreader);
@@ -98,10 +99,8 @@ class Curve2D : public QCPCurve {
   void datapicker(QMouseEvent *event, const QVariant &details);
   void movepicker(QMouseEvent *event, const QVariant &details);
   void removepicker(QMouseEvent *event, const QVariant &details);
-
- signals:
-  void showtooltip(QPointF position, double xval, double yval, Axis2D *xaxis,
-                   Axis2D *yaxis);
+  void dataRangePicker(QMouseEvent *event, const QVariant &details);
+  void reloadIcon();
 
  private:
   Axis2D *xAxis_;
@@ -109,6 +108,7 @@ class Curve2D : public QCPCurve {
   QString layername_;
   QCPScatterStyle *scatterstyle_;
   DataBlockCurve *curvedata_;
+  const PlotData::FunctionData funcdata_;
   QSharedPointer<QCPCurveDataContainer> functionData_;
   Graph2DCommon::PlotType type_;
   Curve2DType curve2dtype_;
@@ -116,11 +116,11 @@ class Curve2D : public QCPCurve {
   ErrorBar2D *yerrorbar_;
   bool xerroravailable_;
   bool yerroravailable_;
-  Graph2DCommon::Picker picker_;
   QPen splinePen_;
   QBrush splineBrush_;
   QVector<QPointF> *splinepoints_;
   QVector<QPointF> *splinecontrolpoints_;
+  QIcon icon_;
 };
 
 #endif  // CURVE2D_H

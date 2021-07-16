@@ -94,7 +94,6 @@ Layout3D::Layout3D(const Graph3DCommon::Plot3DType &plottype,
   setFocusPolicy(Qt::StrongFocus);
 
   // setting general graph properties;
-  graph_->setFlags(graph_->flags() ^ Qt::FramelessWindowHint);
   graph_->setActiveInputHandler(custominter_);
   graph_->activeTheme()->setType(Q3DTheme::ThemeDigia);
   graph_->setShadowQuality(QAbstract3DGraph::ShadowQualityNone);
@@ -106,23 +105,34 @@ Layout3D::Layout3D(const Graph3DCommon::Plot3DType &plottype,
   m_animationCameraX_ =
       new QPropertyAnimation(graph_->scene()->activeCamera(), "xRotation");
   m_animationCameraX_->setDuration(20000);
-  m_animationCameraX_->setStartValue(QVariant::fromValue(0.0f));
-  m_animationCameraX_->setEndValue(QVariant::fromValue(360.0f));
+  m_animationCameraX_->setStartValue(QVariant::fromValue(-180.0f));
+  m_animationCameraX_->setEndValue(QVariant::fromValue(180.0f));
   m_animationCameraX_->setLoopCount(-1);
   upAnimation_ =
       new QPropertyAnimation(graph_->scene()->activeCamera(), "yRotation");
   upAnimation_->setDuration(10000);
   upAnimation_->setStartValue(QVariant::fromValue(0.0f));
-  upAnimation_->setEndValue(QVariant::fromValue(65.0f));
+  upAnimation_->setEndValue(QVariant::fromValue(90.0f));
   downAnimation_ =
       new QPropertyAnimation(graph_->scene()->activeCamera(), "yRotation");
   downAnimation_->setDuration(10000);
-  downAnimation_->setStartValue(QVariant::fromValue(65.0f));
+  downAnimation_->setStartValue(QVariant::fromValue(90.0f));
   downAnimation_->setEndValue(QVariant::fromValue(0.0f));
   m_animationCameraY_ = new QSequentialAnimationGroup();
   m_animationCameraY_->setLoopCount(-1);
   m_animationCameraY_->addAnimation(upAnimation_);
   m_animationCameraY_->addAnimation(downAnimation_);
+
+  graph_->scene()->activeCamera()->setCameraPosition(45, 30, 130);
+  connect(custominter_, &Custom3DInteractions::showContextMenu, this,
+          &Layout3D::showContextMenu);
+  // QWindow doesnt pass mousepressevent to the container widget
+  // so do it here manually
+  connect(custominter_, &Custom3DInteractions::activateParentWindow, this,
+          [=]() {
+            emit mousepressevent(this);
+            unsetCursor();
+          });
 }
 
 Layout3D::~Layout3D() {}
@@ -275,7 +285,8 @@ QSize Layout3D::getContainerSize() const { return main_widget_->size(); }
 Graph3DCommon::Plot3DType Layout3D::getPlotType() const { return plottype_; }
 
 void Layout3D::load(XmlStreamReader *xmlreader, QList<Table *> tabs,
-                    QList<Matrix *> mats) {
+                    QList<Matrix *> mats, ApplicationWindow *app,
+                    bool setname) {
   if (xmlreader->isStartElement() && xmlreader->name() == "plot3d") {
     bool ok = false;
 
@@ -316,10 +327,12 @@ void Layout3D::load(XmlStreamReader *xmlreader, QList<Table *> tabs,
 
     // read name
     QString name = xmlreader->readAttributeString("name", &ok);
-    if (ok) {
-      setName(name);
-    } else
-      xmlreader->raiseWarning(tr("Layout3D name missing or empty"));
+    if (setname) {
+      if (ok) {
+        setName(name);
+      } else
+        xmlreader->raiseWarning(tr("Layout3D name missing or empty"));
+    }
 
     // read label
     QString label = xmlreader->readAttributeString("label", &ok);
@@ -335,7 +348,7 @@ void Layout3D::load(XmlStreamReader *xmlreader, QList<Table *> tabs,
         loadValueAxis(xmlreader);
         loadValueAxis(xmlreader);
         loadValueAxis(xmlreader);
-        surfacemodifier_->load(xmlreader, tabs, mats);
+        surfacemodifier_->load(xmlreader, tabs, mats, app);
         break;
       case Graph3DCommon::Plot3DType::Bar:
         loadCategoryAxis(xmlreader);
@@ -744,7 +757,9 @@ void Layout3D::save(XmlStreamWriter *xmlwriter, const bool saveastemplate) {
   xmlwriter->writeAttribute("y", QString::number(pos().y()));
   xmlwriter->writeAttribute("width", QString::number(width()));
   xmlwriter->writeAttribute("height", QString::number(height()));
-  xmlwriter->writeAttribute("creation_time", birthDate());
+  QDateTime datetime = QDateTime::fromString(birthDate(), Qt::LocalDate);
+  xmlwriter->writeAttribute("creation_time",
+                            datetime.toString("yyyy-dd-MM hh:mm:ss:zzz"));
   xmlwriter->writeAttribute("caption_spec", QString::number(captionPolicy()));
   xmlwriter->writeAttribute("name", name());
   xmlwriter->writeAttribute("label", windowLabel());
@@ -954,4 +969,96 @@ QList<MyWidget *> Layout3D::dependentTableMatrix() {
     } break;
   }
   return dependeon;
+}
+
+void Layout3D::copy(Layout3D *layout, QList<Table *> tables,
+                    QList<Matrix *> matrixs, ApplicationWindow *app) {
+  std::unique_ptr<QTemporaryFile> file =
+      std::unique_ptr<QTemporaryFile>(new QTemporaryFile("temp"));
+  if (!file->open()) {
+    qDebug() << "failed to open xml file for writing";
+    return;
+  }
+  std::unique_ptr<XmlStreamWriter> xmlwriter =
+      std::unique_ptr<XmlStreamWriter>(new XmlStreamWriter(file.get()));
+  xmlwriter->setCodec("UTF-8");
+  xmlwriter->setAutoFormatting(false);
+  layout->save(xmlwriter.get());
+  file->close();
+  if (!file->open()) {
+    qDebug() << "failed to read xml file for writing";
+    return;
+  }
+  std::unique_ptr<XmlStreamReader> xmlreader =
+      std::unique_ptr<XmlStreamReader>(new XmlStreamReader(file.get()));
+
+  QXmlStreamReader::TokenType token;
+  while (!xmlreader->atEnd()) {
+    token = xmlreader->readNext();
+    if (token == QXmlStreamReader::StartElement &&
+        xmlreader->name() == "plot3d") {
+      load(xmlreader.get(), tables, matrixs, app, false);
+    }
+  }
+  file->close();
+}
+
+void Layout3D::print() {
+  std::unique_ptr<QPrinter> printer = std::unique_ptr<QPrinter>(new QPrinter);
+  std::unique_ptr<QPrintPreviewDialog> previewDialog =
+      std::unique_ptr<QPrintPreviewDialog>(
+          new QPrintPreviewDialog(printer.get(), this));
+  connect(previewDialog.get(), &QPrintPreviewDialog::paintRequested,
+          [=](QPrinter *printer) {
+            printer->setColorMode(QPrinter::Color);
+            std::unique_ptr<QPainter> painter =
+                std::unique_ptr<QPainter>(new QPainter(printer));
+
+            QImage image = QImage();
+            QSize size = QSize(main_widget_->width(), main_widget_->height());
+            switch (plottype_) {
+              case Graph3DCommon::Plot3DType::Surface:
+                image = graph3dsurface_->renderToImage(64, size);
+                break;
+              case Graph3DCommon::Plot3DType::Bar:
+                image = graph3dbars_->renderToImage(64, size);
+                break;
+              case Graph3DCommon::Plot3DType::Scatter:
+                image = graph3dscatter_->renderToImage(64, size);
+                break;
+            }
+            // int dpm = 72 / 0.0254;
+            // image.setDotsPerMeterX(dpm);
+            // image.setDotsPerMeterY(dpm);
+
+            QPointF point = QPointF((printer->pageLayout()
+                                         .paintRectPixels(printer->resolution())
+                                         .width() /
+                                     2) -
+                                        (size.width() / 2),
+                                    (printer->pageLayout()
+                                         .paintRectPixels(printer->resolution())
+                                         .height() /
+                                     2) -
+                                        (size.height() / 2));
+            painter->drawImage(point.x(), point.y(), image);
+          });
+  previewDialog->exec();
+}
+
+void Layout3D::copyToClipbord() {
+  QImage image = QImage();
+  QSize size = QSize(main_widget_->width(), main_widget_->height());
+  switch (plottype_) {
+    case Graph3DCommon::Plot3DType::Surface:
+      image = graph3dsurface_->renderToImage(64, size);
+      break;
+    case Graph3DCommon::Plot3DType::Bar:
+      image = graph3dbars_->renderToImage(64, size);
+      break;
+    case Graph3DCommon::Plot3DType::Scatter:
+      image = graph3dscatter_->renderToImage(64, size);
+      break;
+  }
+  QGuiApplication::clipboard()->setImage(image, QClipboard::Clipboard);
 }

@@ -18,7 +18,6 @@
 
 #include <QMenu>
 
-#include "Bar2D.h"
 #include "ColorMap2D.h"
 #include "Curve2D.h"
 #include "ErrorBar2D.h"
@@ -31,6 +30,7 @@
 #include "LineItem2D.h"
 #include "LineSpecial2D.h"
 #include "Matrix.h"
+#include "PickerTool2D.h"
 #include "Pie2D.h"
 #include "Plot2D.h"
 #include "QMessageBox"
@@ -40,14 +40,15 @@
 #include "future/core/column/Column.h"
 #include "future/lib/XmlStreamWriter.h"
 
-AxisRect2D::AxisRect2D(Plot2D *parent, bool setupDefaultAxis)
+AxisRect2D::AxisRect2D(Plot2D *parent, PickerTool2D *picker,
+                       bool setupDefaultAxis)
     : QCPAxisRect(parent, setupDefaultAxis),
       plot2d_(parent),
       axisRectBackGround_(Qt::white),
       axisRectLegend_(new Legend2D(this)),
       isAxisRectSelected_(false),
       printorexportjob_(false),
-      picker_(Graph2DCommon::Picker::None) {
+      picker_(picker) {
   setRangeDrag(Qt::Horizontal | Qt::Vertical);
   setRangeZoom(Qt::Horizontal | Qt::Vertical);
   gridpair_.first.first = nullptr;
@@ -254,19 +255,27 @@ Grid2D *AxisRect2D::bindGridTo(Axis2D *axis) {
   return grid;
 }
 
-void AxisRect2D::setstackbar() {
+void AxisRect2D::setbarsstyle() {
   // set stack
-  QVector<Bar2D *> bvec;
-  QVector<Bar2D *> sortedbvec;
+  QList<Bar2D *> bvec;
+  QList<Bar2D *> sortedbvec;
+  Bar2D::BarStyle style;
   foreach (Bar2D *bar, barvec_) {
     if (bar->getstackposition_barplot() != -1) bvec << bar;
   }
+
+  if (bvec.size() < 2) {
+    qDebug() << "less than 2 bars for stacked/grouped port";
+    return;
+  } else
+    style = bvec.first()->getBarStyle();
   // sort the order
   if (!bvec.isEmpty()) {
     int j = 0;
     while (!bvec.isEmpty()) {
       for (int i = 0; i < bvec.size(); i++) {
         if (bvec.at(i)->getstackposition_barplot() == j) {
+          if (style != bvec.at(i)->getBarStyle()) return;
           sortedbvec << bvec.at(i);
           bvec.removeOne(bvec.at(i));
           j++;
@@ -276,12 +285,8 @@ void AxisRect2D::setstackbar() {
     }
   }
 
-  // set stack
-  Bar2D *basebar = nullptr;
-  foreach (Bar2D *bar, sortedbvec) {
-    if (basebar) bar->moveAbove(basebar);
-    basebar = bar;
-  }
+  (style == Bar2D::BarStyle::Grouped) ? addBarsToBarsGroup(sortedbvec, false)
+                                      : addBarsToStackGroup(sortedbvec);
 }
 
 QList<Axis2D *> AxisRect2D::getAxes2D() const { return axes_; }
@@ -334,7 +339,7 @@ QList<Axis2D *> AxisRect2D::getYAxes2D() const {
   return axes2d;
 }
 
-Axis2D *AxisRect2D::getXAxis(int value) {
+Axis2D *AxisRect2D::getXAxis(const int value) {
   QList<Axis2D *> xaxes = getXAxes2D();
   if (value > -1 && value < xaxes.size()) {
     return xaxes.at(value);
@@ -354,7 +359,7 @@ int AxisRect2D::getXAxisNo(Axis2D *axis) {
   }
 }
 
-Axis2D *AxisRect2D::getYAxis(int value) {
+Axis2D *AxisRect2D::getYAxis(const int value) {
   QList<Axis2D *> yaxes = getYAxes2D();
   if (value > -1 && value < yaxes.size()) {
     return yaxes.at(value);
@@ -375,7 +380,7 @@ int AxisRect2D::getYAxisNo(Axis2D *axis) {
 
 LineSpecial2D *AxisRect2D::addLineSpecial2DPlot(
     const LineScatterSpecialType &type, Table *table, Column *xData,
-    Column *yData, int from, int to, Axis2D *xAxis, Axis2D *yAxis) {
+    Column *yData, int from, const int to, Axis2D *xAxis, Axis2D *yAxis) {
   LineSpecial2D *lineSpecial =
       new LineSpecial2D(table, xData, yData, from, to, xAxis, yAxis);
   lineSpecial->setlinefillcolor_lsplot(
@@ -427,16 +432,14 @@ LineSpecial2D *AxisRect2D::addLineSpecial2DPlot(
                        yData->name());
   lsvec_.append(lineSpecial);
   layers_.append(lineSpecial->layer());
-  connect(lineSpecial, &LineSpecial2D::showtooltip, this,
-          &AxisRect2D::showtooltip);
 
   emit LineSpecial2DCreated(lineSpecial);
   return lineSpecial;
 }
 
 QPair<LineSpecial2D *, LineSpecial2D *> AxisRect2D::addLineSpecialChannel2DPlot(
-    Table *table, Column *xData, Column *yData1, Column *yData2, int from,
-    int to, Axis2D *xAxis, Axis2D *yAxis) {
+    Table *table, Column *xData, Column *yData1, Column *yData2, const int from,
+    const int to, Axis2D *xAxis, Axis2D *yAxis) {
   LineSpecial2D *lineSpecial1 =
       new LineSpecial2D(table, xData, yData1, from, to, xAxis, yAxis);
   QColor color = Utilities::getRandColorGoldenRatio(Utilities::ColorPal::Light);
@@ -475,7 +478,7 @@ QPair<LineSpecial2D *, LineSpecial2D *> AxisRect2D::addLineSpecialChannel2DPlot(
 
 Curve2D *AxisRect2D::addCurve2DPlot(const AxisRect2D::LineScatterType &type,
                                     Table *table, Column *xcol, Column *ycol,
-                                    int from, int to, Axis2D *xAxis,
+                                    const int from, const int to, Axis2D *xAxis,
                                     Axis2D *yAxis) {
   Curve2D *curve = nullptr;
   switch (type) {
@@ -520,16 +523,16 @@ Curve2D *AxisRect2D::addCurve2DPlot(const AxisRect2D::LineScatterType &type,
   curve->setName(table->name() + "_" + xcol->name() + "_" + ycol->name());
   curvevec_.append(curve);
   layers_.append(curve->layer());
-  connect(curve, &Curve2D::showtooltip, this, &AxisRect2D::showtooltip);
 
   emit Curve2DCreated(curve);
   return curve;
 }
 
-Curve2D *AxisRect2D::addFunction2DPlot(QVector<double> *xdata,
+Curve2D *AxisRect2D::addFunction2DPlot(const PlotData::FunctionData funcdata,
+                                       QVector<double> *xdata,
                                        QVector<double> *ydata, Axis2D *xAxis,
                                        Axis2D *yAxis, const QString &name) {
-  Curve2D *curve = new Curve2D(xdata, ydata, xAxis, yAxis);
+  Curve2D *curve = new Curve2D(funcdata, xdata, ydata, xAxis, yAxis);
   curve->setlinetype_cplot(1);
   curve->setscattershape_cplot(Graph2DCommon::ScatterStyle::None);
 
@@ -540,25 +543,25 @@ Curve2D *AxisRect2D::addFunction2DPlot(QVector<double> *xdata,
           &AxisRect2D::legendClick);
   layers_.append(curve->layer());
   curvevec_.append(curve);
-  connect(curve, &Curve2D::showtooltip, this, &AxisRect2D::showtooltip);
 
   emit Curve2DCreated(curve);
   return curve;
 }
 
 Bar2D *AxisRect2D::addBox2DPlot(const AxisRect2D::BarType &type, Table *table,
-                                Column *xData, Column *yData, int from, int to,
-                                Axis2D *xAxis, Axis2D *yAxis,
+                                Column *xData, Column *yData, const int from,
+                                const int to, Axis2D *xAxis, Axis2D *yAxis,
+                                const Bar2D::BarStyle &style,
                                 int stackposition) {
   Bar2D *bar;
   switch (type) {
     case AxisRect2D::BarType::HorizontalBars:
-      bar =
-          new Bar2D(table, xData, yData, from, to, yAxis, xAxis, stackposition);
+      bar = new Bar2D(table, xData, yData, from, to, yAxis, xAxis, style,
+                      stackposition);
       break;
     case AxisRect2D::BarType::VerticalBars:
-      bar =
-          new Bar2D(table, xData, yData, from, to, xAxis, yAxis, stackposition);
+      bar = new Bar2D(table, xData, yData, from, to, xAxis, yAxis, style,
+                      stackposition);
       break;
   }
 
@@ -572,7 +575,6 @@ Bar2D *AxisRect2D::addBox2DPlot(const AxisRect2D::BarType &type, Table *table,
   bar->setName(table->name() + "_" + xData->name() + "_" + yData->name());
   layers_.append(bar->layer());
   barvec_.append(bar);
-  connect(bar, &Bar2D::showtooltip, this, &AxisRect2D::showtooltip);
 
   emit Bar2DCreated(bar);
   return bar;
@@ -581,8 +583,9 @@ Bar2D *AxisRect2D::addBox2DPlot(const AxisRect2D::BarType &type, Table *table,
 Vector2D *AxisRect2D::addVectorPlot(const Vector2D::VectorPlot &vectorplot,
                                     Table *table, Column *x1Data,
                                     Column *y1Data, Column *x2Data,
-                                    Column *y2Data, int from, int to,
-                                    Axis2D *xAxis, Axis2D *yAxis) {
+                                    Column *y2Data, const int from,
+                                    const int to, Axis2D *xAxis,
+                                    Axis2D *yAxis) {
   Vector2D *vec = new Vector2D(vectorplot, table, x1Data, y1Data, x2Data,
                                y2Data, from, to, xAxis, yAxis);
   VectorLegendItem2D *legendItem = new VectorLegendItem2D(axisRectLegend_, vec);
@@ -598,7 +601,7 @@ Vector2D *AxisRect2D::addVectorPlot(const Vector2D::VectorPlot &vectorplot,
   return vec;
 }
 
-StatBox2D *AxisRect2D::addStatBox2DPlot(StatBox2D::BoxWhiskerData data,
+StatBox2D *AxisRect2D::addStatBox2DPlot(const StatBox2D::BoxWhiskerData data,
                                         Axis2D *xAxis, Axis2D *yAxis) {
   StatBox2D *statbox = new StatBox2D(data, xAxis, yAxis);
   LegendItem2D *legendItem = new LegendItem2D(axisRectLegend_, statbox);
@@ -608,15 +611,14 @@ StatBox2D *AxisRect2D::addStatBox2DPlot(StatBox2D::BoxWhiskerData data,
   getLegend()->setVisible(false);
   layers_.append(statbox->layer());
   statboxvec_.append(statbox);
-  connect(statbox, &StatBox2D::showtooltip, this, &AxisRect2D::showtooltip);
-
   emit StatBox2DCreated(statbox);
   return statbox;
 }
 
 Bar2D *AxisRect2D::addHistogram2DPlot(const AxisRect2D::BarType &type,
-                                      Table *table, Column *yData, int from,
-                                      int to, Axis2D *xAxis, Axis2D *yAxis) {
+                                      Table *table, Column *yData,
+                                      const int from, const int to,
+                                      Axis2D *xAxis, Axis2D *yAxis) {
   Bar2D *bar;
   switch (type) {
     case AxisRect2D::BarType::HorizontalBars:
@@ -634,15 +636,13 @@ Bar2D *AxisRect2D::addHistogram2DPlot(const AxisRect2D::BarType &type,
   bar->setName(table->name() + "_" + yData->name());
   layers_.append(bar->layer());
   barvec_.append(bar);
-  connect(bar, &Bar2D::showtooltip, this, &AxisRect2D::showtooltip);
-
   emit Bar2DCreated(bar);
   return bar;
 }
 
 Pie2D *AxisRect2D::addPie2DPlot(const Graph2DCommon::PieStyle &style,
                                 Table *table, Column *xData, Column *yData,
-                                int from, int to) {
+                                const int from, const int to) {
   Pie2D *pie = new Pie2D(this, style, table, xData, yData, from, to);
   pie->setGraphData(table, xData, yData, from, to);
   // connect(legendItem, SIGNAL(legendItemClicked()), SLOT(legendClick()));
@@ -665,7 +665,7 @@ ColorMap2D *AxisRect2D::addColorMap2DPlot(Matrix *matrix, Axis2D *xAxis,
   return colormap;
 }
 
-TextItem2D *AxisRect2D::addTextItem2D(QString text) {
+TextItem2D *AxisRect2D::addTextItem2D(const QString text) {
   TextItem2D *textitem = new TextItem2D(this, plot2d_);
   textitem->position->setAxes(gridpair_.first.second, gridpair_.second.second);
   textitem->setText(text);
@@ -717,6 +717,12 @@ ImageItem2D *AxisRect2D::addImageItem2D(const QString &filename) {
   foreach (QCPItemPosition *position, imageitem->positions()) {
     position->setAxes(gridpair_.first.second, gridpair_.second.second);
   }
+  imageitem->topLeft->setPixelPosition(rect().center());
+  // anchor point adjustment
+  imageitem->bottomRight->setPixelPosition(
+      QPointF(imageitem->topRight->pixelPosition().x(),
+              imageitem->bottomLeft->pixelPosition().y()));
+  imageitem->setScaled(true, Qt::AspectRatioMode::IgnoreAspectRatio);
   layers_.append(imageitem->layer());
   imagevec_.append(imageitem);
   emit ImageItem2DCreated(imageitem);
@@ -760,6 +766,36 @@ void AxisRect2D::updateLegendRect() {
 }
 
 void AxisRect2D::selectAxisRect() { emit AxisRectClicked(this); }
+
+void AxisRect2D::addBarsToBarsGroup(QList<Bar2D *> bars,
+                                    bool autowidthsettins) {
+  QCPBarsGroup *bargroup = new QCPBarsGroup(plot2d_);
+  addBarsGroup(bargroup);
+  double spacing = 0.0;
+  foreach (Bar2D *bar, bars) {
+    if (autowidthsettins) {
+      bar->setWidthType(QCPBars::wtPlotCoords);
+      spacing = bar->width() * 0.1;
+      bar->setWidth((bar->width() / bars.size()) - spacing * 2);
+    } else {
+      spacing = bar->stackingGap();
+    }
+    bargroup->append(bar);
+    bar->setBarGroup(bargroup);
+  }
+  bargroup->setSpacingType(QCPBarsGroup::stPlotCoords);
+  bargroup->setSpacing(spacing);
+}
+
+void AxisRect2D::addBarsToStackGroup(QList<Bar2D *> bars) {
+  // create the stack
+  Bar2D *basebar = nullptr;
+  foreach (Bar2D *bar, bars) {
+    bar->setStackingGap(1);
+    if (basebar) bar->moveAbove(basebar);
+    basebar = bar;
+  }
+}
 
 void AxisRect2D::setSelected(const bool status) {
   isAxisRectSelected_ = status;
@@ -907,18 +943,18 @@ bool AxisRect2D::removeBar2D(Bar2D *bar) {
       barvec_.remove(i);
       layers_.removeOne(bar->layer());
     }
-    foreach (auto bargroup, bargroupvec_) {
-      if (bargroup->isEmpty()) {
-        bargroupvec_.removeOne(bargroup);
-        delete bargroup;
-      }
-    }
   }
   axisRectLegend_->removeItem(axisRectLegend_->itemWithPlottable(bar));
   bool result = false;
   bar->removeXerrorBar();
   bar->removeYerrorBar();
   result = plot2d_->removePlottable(bar);
+  foreach (auto bargroup, bargroupvec_) {
+    if (bargroup->size() == 1) {
+      bargroupvec_.removeOne(bargroup);
+      delete bargroup;
+    }
+  }
   emit Bar2DRemoved(this);
   return result;
 }
@@ -1029,16 +1065,6 @@ void AxisRect2D::replotBareBones() const {
   plot2d_->layer(plot2d_->getGrid2DLayerName())->replot();
   plot2d_->layer(plot2d_->getAxis2DLayerName())->replot();
   plot2d_->layer(plot2d_->getLegend2DLayerName())->replot();
-}
-
-void AxisRect2D::setGraphTool(const Graph2DCommon::Picker &picker) {
-  picker_ = picker;
-  foreach (LineSpecial2D *ls, lsvec_) { ls->setpicker_lsplot(picker); }
-  foreach (Curve2D *curve, curvevec_) { curve->setpicker_cplot(picker); }
-  foreach (Bar2D *bar, barvec_) { bar->setpicker_barplot(picker); }
-  foreach (StatBox2D *statbox, statboxvec_) {
-    statbox->setpicker_statbox(picker);
-  }
 }
 
 void AxisRect2D::setGridPairToNullptr() {
@@ -1939,6 +1965,108 @@ bool AxisRect2D::load(XmlStreamReader *xmlreader, QList<Table *> tabs,
             curve->setlegendtext_cplot(legend);
           }
         } else if (ok && datatype == "function") {
+          PlotData::FunctionData funcdata;
+          int functiontype = 0;
+          // function type
+          QString functype =
+              xmlreader->readAttributeString("functiontype", &ok);
+          if (!ok)
+            xmlreader->raiseWarning(tr("Curve2D function type not found"));
+
+          (functype == "normal")       ? functiontype = 0
+          : (functype == "parametric") ? functiontype = 1
+          : (functype == "polar")      ? functiontype = 2
+                                       : functiontype = 0;
+
+          switch (functiontype) {
+            case 0: {
+              funcdata.type = 0;
+              // function function
+              QString funcfunc =
+                  xmlreader->readAttributeString("function", &ok);
+              if (ok)
+                funcdata.functions << funcfunc;
+              else
+                xmlreader->raiseWarning(
+                    tr("Curve2D function function not found"));
+            } break;
+            case 1: {
+              funcdata.type = 1;
+              // function functionx
+              QString funcfuncx =
+                  xmlreader->readAttributeString("functionx", &ok);
+              if (ok)
+                funcdata.functions << funcfuncx;
+              else
+                xmlreader->raiseWarning(
+                    tr("Curve2D function functionx not found"));
+              // function functiony
+              QString funcfuncy =
+                  xmlreader->readAttributeString("functiony", &ok);
+              if (ok)
+                funcdata.functions << funcfuncy;
+              else
+                xmlreader->raiseWarning(
+                    tr("Curve2D function functiony not found"));
+              // function parameter
+              QString funcparam =
+                  xmlreader->readAttributeString("parameter", &ok);
+              if (ok)
+                funcdata.parameter = funcparam;
+              else
+                xmlreader->raiseWarning(
+                    tr("Curve2D function parameter not found"));
+            } break;
+            case 2: {
+              funcdata.type = 2;
+              // function functionr
+              QString funcfuncr =
+                  xmlreader->readAttributeString("functionr", &ok);
+              if (ok)
+                funcdata.functions << funcfuncr;
+              else
+                xmlreader->raiseWarning(
+                    tr("Curve2D function functionr not found"));
+              // function functiontheta
+              QString funcfunctheta =
+                  xmlreader->readAttributeString("functiontheta", &ok);
+              if (ok)
+                funcdata.functions << funcfunctheta;
+              else
+                xmlreader->raiseWarning(
+                    tr("Curve2D function functiontheta not found"));
+              // function parameter
+              QString funcparam =
+                  xmlreader->readAttributeString("parameter", &ok);
+              if (ok)
+                funcdata.parameter = funcparam;
+              else
+                xmlreader->raiseWarning(
+                    tr("Curve2D function parameter not found"));
+            } break;
+          }
+
+          // Function from
+          double funcfrom = xmlreader->readAttributeDouble("from", &ok);
+          if (ok)
+            funcdata.from = funcfrom;
+          else
+            xmlreader->raiseWarning(tr("Curve2D function from not found"));
+
+          // Function to
+          double functo = xmlreader->readAttributeDouble("to", &ok);
+          if (ok)
+            funcdata.to = functo;
+          else
+            xmlreader->raiseWarning(tr("Curve2D function to not found"));
+
+          // Function points
+          int funcpoints = xmlreader->readAttributeInt("points", &ok);
+          if (ok)
+            funcdata.points = funcpoints;
+          else
+            xmlreader->raiseWarning(tr("Curve2D function points not found"));
+
           QVector<double> *xdata = new QVector<double>();
           QVector<double> *ydata = new QVector<double>();
 
@@ -1961,7 +2089,8 @@ bool AxisRect2D::load(XmlStreamReader *xmlreader, QList<Table *> tabs,
           }
           if (xdata->size() > 0 && ydata->size() > 0 &&
               xdata->size() == ydata->size() && xaxis && yaxis) {
-            curve = addFunction2DPlot(xdata, ydata, xaxis, yaxis, legend);
+            curve =
+                addFunction2DPlot(funcdata, xdata, ydata, xaxis, yaxis, legend);
             curve->setlegendtext_cplot(legend);
           } else {
             xmlreader->raiseError(tr("Curve2D function skipped due to error"));
@@ -1975,7 +2104,7 @@ bool AxisRect2D::load(XmlStreamReader *xmlreader, QList<Table *> tabs,
         bool legendvisible = xmlreader->readAttributeBool("legendvisible", &ok);
         (ok) ? curve->setlegendvisible_cplot(legendvisible)
              : xmlreader->raiseWarning(
-                 tr("Curve2D legend visible property setting error"));
+                   tr("Curve2D legend visible property setting error"));
 
         while (!xmlreader->atEnd()) {
           xmlreader->readNextStartElement();
@@ -2204,14 +2333,34 @@ bool AxisRect2D::load(XmlStreamReader *xmlreader, QList<Table *> tabs,
           if (!ok) xmlreader->raiseError(tr("Bar2D from not found error"));
           int to = xmlreader->readAttributeInt("to", &ok);
           if (!ok) xmlreader->raiseError(tr("Bar2D to not found error"));
+
+          Bar2D::BarStyle barstyleenum;
+          bool barstylstatus = false;
+          QString barstyle = xmlreader->readAttributeString("style", &ok);
+          if (ok) {
+            barstylstatus = true;
+            (barstyle == "individual")
+                ? barstyleenum = Bar2D::BarStyle::Individual
+            : (barstyle == "grouped") ? barstyleenum = Bar2D::BarStyle::Grouped
+            : (barstyle == "stacked")
+                ? barstyleenum = Bar2D::BarStyle::Stacked
+                : barstyleenum = Bar2D::BarStyle::Individual;
+          } else
+            xmlreader->raiseWarning(tr("Bar2D xy style not found error"));
+
           int stackorder = xmlreader->readAttributeInt("stackorder", &ok);
           if (!ok)
             xmlreader->raiseWarning(tr("Bar2D stackorder not found error"));
 
-          if (table && xcolumn && ycolumn && xaxis && yaxis) {
+          // compatibility with previous version
+          if (!barstylstatus)
+            (stackorder == -1) ? barstyleenum = Bar2D::BarStyle::Individual
+                               : barstyleenum = Bar2D::BarStyle::Stacked;
+
+          if (table && xcolumn && ycolumn && xaxis && yaxis)
             bar = addBox2DPlot(barorientation, table, xcolumn, ycolumn, from,
-                               to, xaxis, yaxis, stackorder);
-          }
+                               to, xaxis, yaxis, barstyleenum, stackorder);
+
         } else if (ok && bartype == "histogram") {
           Table *table = nullptr;
           Column *column = nullptr;
@@ -2269,7 +2418,7 @@ bool AxisRect2D::load(XmlStreamReader *xmlreader, QList<Table *> tabs,
         bar->setName(legend);
 
         // stackgap
-        int stackgap = xmlreader->readAttributeInt("stackgap", &ok);
+        double stackgap = xmlreader->readAttributeDouble("stackgap", &ok);
         if (ok) {
           bar->setStackingGap(stackgap);
         } else
@@ -2508,31 +2657,50 @@ bool AxisRect2D::load(XmlStreamReader *xmlreader, QList<Table *> tabs,
   } else  // no plot2d element
     xmlreader->raiseError(tr("unknown element %1").arg(xmlreader->name()));
 
-  setstackbar();
+  setbarsstyle();
 
   return !xmlreader->hasError();
 }
 
 void AxisRect2D::mousePressEvent(QMouseEvent *event, const QVariant &variant) {
-  if (picker_ == Graph2DCommon::Picker::DataGraph &&
+  if (picker_->getPicker() == Graph2DCommon::Picker::DataGraph &&
       event->button() == Qt::MouseButton::LeftButton)
-    emit showtooltip(
+    picker_->showtooltip(
         event->pos(),
         gridpair_.first.second->pixelToCoord(event->localPos().x()),
         gridpair_.second.second->pixelToCoord(event->localPos().y()),
         gridpair_.first.second, gridpair_.second.second);
+
   emit AxisRectClicked(this);
   QCPAxisRect::mousePressEvent(event, variant);
 }
 
 void AxisRect2D::mouseMoveEvent(QMouseEvent *event, const QPointF &startPos) {
-  if (picker_ == Graph2DCommon::Picker::DataGraph)
-    emit showtooltip(
-        event->pos(),
+  if (picker_->getPicker() == Graph2DCommon::Picker::DataGraph)
+    picker_->showtooltip(
+        event->localPos(),
         gridpair_.first.second->pixelToCoord(event->localPos().x()),
         gridpair_.second.second->pixelToCoord(event->localPos().y()),
         gridpair_.first.second, gridpair_.second.second);
+  else if (picker_->getPicker() == Graph2DCommon::Picker::DataRange)
+    picker_->rangepickermousedrag(
+        event->pos(),
+        gridpair_.first.second->pixelToCoord(event->localPos().x()),
+        gridpair_.second.second->pixelToCoord(event->localPos().y()));
+  else if (picker_->getPicker() == Graph2DCommon::Picker::DataMove)
+    picker_->movepickermousedrag(
+        event->pos(),
+        gridpair_.first.second->pixelToCoord(event->localPos().x()),
+        gridpair_.second.second->pixelToCoord(event->localPos().y()));
+
   QCPAxisRect::mouseMoveEvent(event, startPos);
+}
+
+void AxisRect2D::mouseReleaseEvent(QMouseEvent *event, const QPointF &) {
+  if (picker_->getPicker() == Graph2DCommon::Picker::DataRange)
+    picker_->rangepickermouserelease(event->localPos());
+  else if (picker_->getPicker() == Graph2DCommon::Picker::DataMove)
+    picker_->movepickermouserelease(event->localPos());
 }
 
 void AxisRect2D::draw(QCPPainter *painter) {

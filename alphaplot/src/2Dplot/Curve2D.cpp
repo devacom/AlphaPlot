@@ -3,7 +3,9 @@
 #include "AxisRect2D.h"
 #include "DataManager2D.h"
 #include "ErrorBar2D.h"
+#include "PickerTool2D.h"
 #include "Table.h"
+#include "core/IconLoader.h"
 #include "core/Utilities.h"
 #include "future/core/column/Column.h"
 #include "future/lib/XmlStreamReader.h"
@@ -25,8 +27,8 @@ Curve2D::Curve2D(Curve2D::Curve2DType curve2dtype, Table *table, Column *xcol,
       xerrorbar_(nullptr),
       yerrorbar_(nullptr),
       xerroravailable_(false),
-      yerroravailable_(false),
-      picker_(Graph2DCommon::Picker::None) {
+      yerroravailable_(false) {
+  reloadIcon();
   init();
   setSelectable(QCP::SelectionType::stSingleData);
   setlinestrokecolor_cplot(
@@ -42,8 +44,8 @@ Curve2D::Curve2D(Curve2D::Curve2DType curve2dtype, Table *table, Column *xcol,
   setData(curvedata_->data());
 }
 
-Curve2D::Curve2D(QVector<double> *xdata, QVector<double> *ydata, Axis2D *xAxis,
-                 Axis2D *yAxis)
+Curve2D::Curve2D(const PlotData::FunctionData funcdata, QVector<double> *xdata,
+                 QVector<double> *ydata, Axis2D *xAxis, Axis2D *yAxis)
     : QCPCurve(xAxis, yAxis),
       xAxis_(xAxis),
       yAxis_(yAxis),
@@ -52,13 +54,13 @@ Curve2D::Curve2D(QVector<double> *xdata, QVector<double> *ydata, Axis2D *xAxis,
           Utilities::getRandColorGoldenRatio(Utilities::ColorPal::Dark),
           Utilities::getRandColorGoldenRatio(Utilities::ColorPal::Dark), 6.0)),
       curvedata_(nullptr),
+      funcdata_(funcdata),
       functionData_(new QCPCurveDataContainer),
       type_(Graph2DCommon::PlotType::Function),
       xerrorbar_(nullptr),
       yerrorbar_(nullptr),
       xerroravailable_(false),
-      yerroravailable_(false),
-      picker_(Graph2DCommon::Picker::None) {
+      yerroravailable_(false) {
   Q_ASSERT(xdata->size() == ydata->size());
   init();
   setlinestrokecolor_cplot(
@@ -412,6 +414,7 @@ void Curve2D::setlinetype_cplot(const int type) {
       }
       break;
   }
+  reloadIcon();
 }
 
 void Curve2D::setlinestrokestyle_cplot(const Qt::PenStyle &style) {
@@ -523,6 +526,7 @@ void Curve2D::setscattershape_cplot(const Graph2DCommon::ScatterStyle &shape) {
       break;
   }
   setScatterStyle(*scatterstyle_);
+  reloadIcon();
 }
 
 void Curve2D::setscatterfillcolor_cplot(const QColor &color) {
@@ -580,6 +584,7 @@ void Curve2D::setlinefillstatus_cplot(const bool value) {
       splineBrush_.setStyle(Qt::NoBrush);
     }
   }
+  reloadIcon();
 }
 
 void Curve2D::setlegendvisible_cplot(const bool value) {
@@ -587,10 +592,6 @@ void Curve2D::setlegendvisible_cplot(const bool value) {
 }
 
 void Curve2D::setlegendtext_cplot(const QString &text) { setName(text); }
-
-void Curve2D::setpicker_cplot(const Graph2DCommon::Picker picker) {
-  picker_ = picker;
-}
 
 void Curve2D::save(XmlStreamWriter *xmlwriter, int xaxis, int yaxis) {
   xmlwriter->writeStartElement("curve");
@@ -608,8 +609,8 @@ void Curve2D::save(XmlStreamWriter *xmlwriter, int xaxis, int yaxis) {
   }
 
   (getlegendvisible_cplot())
-    ? xmlwriter->writeAttribute("legendvisible", "true")
-    : xmlwriter->writeAttribute("legendvisible", "false");
+      ? xmlwriter->writeAttribute("legendvisible", "true")
+      : xmlwriter->writeAttribute("legendvisible", "false");
   xmlwriter->writeAttribute("legend", getlegendtext_cplot());
   // data
   if (curvedata_) {
@@ -621,6 +622,39 @@ void Curve2D::save(XmlStreamWriter *xmlwriter, int xaxis, int yaxis) {
     xmlwriter->writeAttribute("to", QString::number(curvedata_->getto()));
   } else if (functionData_) {
     xmlwriter->writeAttribute("data", "function");
+    switch (funcdata_.type) {
+      case 0:
+        xmlwriter->writeAttribute("functiontype", "normal");
+        (funcdata_.functions.size() == 1)
+            ? xmlwriter->writeAttribute("function", funcdata_.functions.at(0))
+            : xmlwriter->writeAttribute("function", "unknown");
+        break;
+      case 1:
+        xmlwriter->writeAttribute("functiontype", "parametric");
+        if (funcdata_.functions.size() == 2) {
+          xmlwriter->writeAttribute("functionx", funcdata_.functions.at(0));
+          xmlwriter->writeAttribute("functiony", funcdata_.functions.at(1));
+        } else {
+          xmlwriter->writeAttribute("functionx", "unknown");
+          xmlwriter->writeAttribute("functiony", "unknown");
+        }
+        xmlwriter->writeAttribute("parameter", funcdata_.parameter);
+        break;
+      case 2:
+        xmlwriter->writeAttribute("functiontype", "polar");
+        if (funcdata_.functions.size() == 2) {
+          xmlwriter->writeAttribute("functionr", funcdata_.functions.at(0));
+          xmlwriter->writeAttribute("functiontheta", funcdata_.functions.at(1));
+        } else {
+          xmlwriter->writeAttribute("functionr", "unknown");
+          xmlwriter->writeAttribute("functiontheta", "unknown");
+        }
+        xmlwriter->writeAttribute("parameter", funcdata_.parameter);
+        break;
+    }
+    xmlwriter->writeAttribute("from", QString::number(funcdata_.from));
+    xmlwriter->writeAttribute("to", QString::number(funcdata_.to));
+    xmlwriter->writeAttribute("points", QString::number(funcdata_.points));
     xmlwriter->writeStartElement("functiondata");
 
     for (int i = 0; i < functionData_.data()->size(); ++i) {
@@ -894,7 +928,7 @@ void Curve2D::drawCurveLine(QCPPainter *painter,
 
 void Curve2D::mousePressEvent(QMouseEvent *event, const QVariant &details) {
   if (event->button() == Qt::LeftButton) {
-    switch (picker_) {
+    switch (xAxis_->getaxisrect_axis()->getPickerTool()->getPicker()) {
       case Graph2DCommon::Picker::None:
       case Graph2DCommon::Picker::DataGraph:
       case Graph2DCommon::Picker::DragRange:
@@ -909,6 +943,11 @@ void Curve2D::mousePressEvent(QMouseEvent *event, const QVariant &details) {
       case Graph2DCommon::Picker::DataRemove:
         removepicker(event, details);
         break;
+      case Graph2DCommon::Picker::DataRange:
+        dataRangePicker(event, details);
+        break;
+      default:
+        break;
     }
   }
   QCPCurve::mousePressEvent(event, details);
@@ -921,7 +960,6 @@ void Curve2D::drawSpline(QCPPainter *painter) {
   QPointF point = QPointF(xAxis_->coordToPixel(splinepoints_->at(0).x()),
                           yAxis_->coordToPixel(splinepoints_->at(0).y()));
   path.moveTo(point);
-  ;
   for (int i = 0, j = 0; i < splinepoints_->size() - 1; i++, j++) {
     QPointF ctrlpoint1 =
         QPointF(xAxis_->coordToPixel(splinecontrolpoints_->at(i + j).x()),
@@ -953,7 +991,6 @@ QVector<QPointF> Curve2D::calculateControlPoints(
     const QVector<QPointF> &points) {
   QVector<QPointF> controlPoints;
   controlPoints.resize(points.count() * 2 - 2);
-
   int n = points.count() - 1;
 
   if (n == 1) {
@@ -969,31 +1006,20 @@ QVector<QPointF> Curve2D::calculateControlPoints(
   // Set of equations for P0 to Pn points.
   QVector<qreal> vector;
   vector.resize(n);
-
   vector[0] = points[0].x() + 2 * points[1].x();
-
   for (int i = 1; i < n - 1; ++i)
     vector[i] = 4 * points[i].x() + 2 * points[i + 1].x();
-
   vector[n - 1] = (8 * points[n - 1].x() + points[n].x()) / 2.0;
-
   QVector<qreal> xControl = firstControlPoints(vector);
-
   vector[0] = points[0].y() + 2 * points[1].y();
-
   for (int i = 1; i < n - 1; ++i)
     vector[i] = 4 * points[i].y() + 2 * points[i + 1].y();
-
   vector[n - 1] = (8 * points[n - 1].y() + points[n].y()) / 2.0;
-
   QVector<qreal> yControl = firstControlPoints(vector);
-
   for (int i = 0, j = 0; i < n; ++i, ++j) {
     controlPoints[j].setX(xControl[i]);
     controlPoints[j].setY(yControl[i]);
-
     j++;
-
     if (i < n - 1) {
       controlPoints[j].setX(2 * points[i + 1].x() - xControl[i + 1]);
       controlPoints[j].setY(2 * points[i + 1].y() - yControl[i + 1]);
@@ -1007,31 +1033,25 @@ QVector<QPointF> Curve2D::calculateControlPoints(
 
 QVector<qreal> Curve2D::firstControlPoints(const QVector<qreal> &vector) {
   QVector<qreal> result;
-
   int count = vector.count();
   result.resize(count);
   result[0] = vector[0] / 2.0;
-
   QVector<qreal> temp;
   temp.resize(count);
   temp[0] = 0;
-
   qreal b = 2.0;
-
   for (int i = 1; i < count; i++) {
     temp[i] = 1 / b;
     b = (i < count - 1 ? 4.0 : 3.5) - temp[i];
     result[i] = (vector[i] - result[i - 1]) / b;
   }
-
   for (int i = 1; i < count; i++)
     result[count - i - 1] -= temp[count - i] * result[count - i];
-
   return result;
 }
 
 void Curve2D::datapicker(QMouseEvent *event, const QVariant &details) {
-  QCPCurveDataContainer::const_iterator it = data()->constEnd();
+  QCPCurveDataContainer::const_iterator it;
   QCPDataSelection dataPoints = details.value<QCPDataSelection>();
   if (dataPoints.dataPointCount() > 0) {
     dataPoints.dataRange();
@@ -1041,18 +1061,33 @@ void Curve2D::datapicker(QMouseEvent *event, const QVariant &details) {
         point.x() < event->localPos().x() + 10 &&
         point.y() > event->localPos().y() - 10 &&
         point.y() < event->localPos().y() + 10) {
-      emit showtooltip(point, it->mainKey(), it->mainValue(), getxaxis(),
-                       getyaxis());
-      emit getxaxis()->getaxisrect_axis()->datapoint(this, it->mainKey(),
-                                                     it->mainValue());
+      xAxis_->getaxisrect_axis()->getPickerTool()->showtooltip(
+          point, it->mainKey(), it->mainValue(), getxaxis(), getyaxis());
+      xAxis_->getaxisrect_axis()->getPickerTool()->datapoint(
+          this, it->mainKey(), it->mainValue());
     }
   }
 }
 
-void Curve2D::movepicker(QMouseEvent *event, const QVariant &details) {}
+void Curve2D::movepicker(QMouseEvent *event, const QVariant &details) {
+  QCPCurveDataContainer::const_iterator it;
+  QCPDataSelection dataPoints = details.value<QCPDataSelection>();
+  if (dataPoints.dataPointCount() > 0) {
+    dataPoints.dataRange();
+    it = data()->at(dataPoints.dataRange().begin());
+    QPointF point = coordsToPixels(it->mainKey(), it->mainValue());
+    if (point.x() > event->localPos().x() - 10 &&
+        point.x() < event->localPos().x() + 10 &&
+        point.y() > event->localPos().y() - 10 &&
+        point.y() < event->localPos().y() + 10) {
+      xAxis_->getaxisrect_axis()->getPickerTool()->movepickermouspresscurve(
+          this, it->mainKey(), it->mainValue(), getxaxis(), getyaxis());
+    }
+  }
+}
 
 void Curve2D::removepicker(QMouseEvent *event, const QVariant &details) {
-  QCPCurveDataContainer::const_iterator it = data()->constEnd();
+  QCPCurveDataContainer::const_iterator it;
   QCPDataSelection dataPoints = details.value<QCPDataSelection>();
   if (dataPoints.dataPointCount() > 0) {
     dataPoints.dataRange();
@@ -1067,4 +1102,65 @@ void Curve2D::removepicker(QMouseEvent *event, const QVariant &details) {
       }
     }
   }
+}
+
+void Curve2D::dataRangePicker(QMouseEvent *event, const QVariant &details) {
+  QCPCurveDataContainer::const_iterator it;
+  QCPDataSelection dataPoints = details.value<QCPDataSelection>();
+  if (dataPoints.dataPointCount() > 0) {
+    dataPoints.dataRange();
+    it = data()->at(dataPoints.dataRange().begin());
+    QPointF point = coordsToPixels(it->mainKey(), it->mainValue());
+    if (point.x() > event->localPos().x() - 10 &&
+        point.x() < event->localPos().x() + 10 &&
+        point.y() > event->localPos().y() - 10 &&
+        point.y() < event->localPos().y() + 10) {
+      xAxis_->getaxisrect_axis()->getPickerTool()->rangepickermousepress(
+          this, it->mainKey(), it->mainValue());
+    }
+  }
+}
+
+void Curve2D::reloadIcon() {
+  if (curve2dtype_ == Curve2DType::Spline) {
+    icon_ = IconLoader::load("graph2d-spline", IconLoader::LightDark);
+    return;
+  }
+  if (type_ == Graph2DCommon::PlotType::Function) {
+    icon_ = IconLoader::load("graph2d-function-xy", IconLoader::LightDark);
+    return;
+  }
+  (getlinetype_cplot() == 0 &&
+   getscattershape_cplot() == Graph2DCommon::ScatterStyle::None &&
+   getlinefillstatus_cplot() == false)
+      ? icon_ = IconLoader::load("graph2d-scatter", IconLoader::LightDark)
+  : (getlinetype_cplot() == 0 &&
+     getscattershape_cplot() == Graph2DCommon::ScatterStyle::None &&
+     getlinefillstatus_cplot() == true)
+      ? icon_ = IconLoader::load("graph2d-scatter", IconLoader::LightDark)
+  : (getlinetype_cplot() == 0 &&
+     getscattershape_cplot() != Graph2DCommon::ScatterStyle::None &&
+     getlinefillstatus_cplot() == false)
+      ? icon_ = IconLoader::load("graph2d-scatter", IconLoader::LightDark)
+  : (getlinetype_cplot() == 0 &&
+     getscattershape_cplot() != Graph2DCommon::ScatterStyle::None &&
+     getlinefillstatus_cplot() == true)
+      ? icon_ = IconLoader::load("graph2d-scatter", IconLoader::LightDark)
+  : (getlinetype_cplot() == 1 &&
+     getscattershape_cplot() == Graph2DCommon::ScatterStyle::None &&
+     getlinefillstatus_cplot() == false)
+      ? icon_ = IconLoader::load("graph2d-line", IconLoader::LightDark)
+  : (getlinetype_cplot() == 1 &&
+     getscattershape_cplot() == Graph2DCommon::ScatterStyle::None &&
+     getlinefillstatus_cplot() == true)
+      ? icon_ = IconLoader::load("graph2d-area", IconLoader::LightDark)
+  : (getlinetype_cplot() == 1 &&
+     getscattershape_cplot() != Graph2DCommon::ScatterStyle::None &&
+     getlinefillstatus_cplot() == false)
+      ? icon_ = IconLoader::load("graph2d-line-scatter", IconLoader::LightDark)
+  : (getlinetype_cplot() == 1 &&
+     getscattershape_cplot() != Graph2DCommon::ScatterStyle::None &&
+     getlinefillstatus_cplot() == true)
+      ? icon_ = IconLoader::load("graph2d-area", IconLoader::LightDark)
+      : IconLoader::load("graph2d-line-scatter", IconLoader::LightDark);
 }

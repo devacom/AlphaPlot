@@ -25,7 +25,8 @@
 #include "future/lib/XmlStreamReader.h"
 #include "future/lib/XmlStreamWriter.h"
 
-Axis2D::Axis2D(AxisRect2D *parent, AxisType type, TickerType tickertype)
+Axis2D::Axis2D(AxisRect2D *parent, const AxisType type,
+               const TickerType tickertype)
     : QCPAxis(parent, type),
       axisrect_(parent),
       tickertype_(tickertype),
@@ -70,7 +71,7 @@ double Axis2D::getfrom_axis() const { return range().lower; }
 
 double Axis2D::getto_axis() const { return range().upper; }
 
-Axis2D::AxisScaleType Axis2D::getscaletype_axis() {
+Axis2D::AxisScaleType Axis2D::getscaletype_axis() const {
   AxisScaleType scaletype;
   switch (scaleType()) {
     case QCPAxis::stLinear:
@@ -83,7 +84,7 @@ Axis2D::AxisScaleType Axis2D::getscaletype_axis() {
   return scaletype;
 }
 
-Axis2D::AxisOreantation Axis2D::getorientation_axis() {
+Axis2D::AxisOreantation Axis2D::getorientation_axis() const {
   AxisOreantation orientation;
   switch (axisType()) {
     case QCPAxis::atLeft:
@@ -212,6 +213,48 @@ Axis2D::AxisLabelFormat Axis2D::getticklabelformat_axis() const {
 }
 
 int Axis2D::getticklabelprecision_axis() const { return numberPrecision(); }
+
+QString Axis2D::getname_axis() const {
+  QString name;
+  name = label();
+  name = name.remove("\n");
+  if (name.length() > 15) {
+    name.truncate(15);
+    name = name + "***";
+  }
+  switch (getorientation_axis()) {
+    case Axis2D::AxisOreantation::Left:
+    case Axis2D::AxisOreantation::Right:
+      name = name + " (Y):";
+      break;
+    case Axis2D::AxisOreantation::Top:
+    case Axis2D::AxisOreantation::Bottom:
+      name = name + " (X):";
+      break;
+  }
+  return name;
+}
+
+uint Axis2D::getnumber_axis() const {
+  switch (getorientation_axis()) {
+    case Axis2D::AxisOreantation::Left:
+    case Axis2D::AxisOreantation::Right: {
+      QList<Axis2D *> yaxes = getaxisrect_axis()->getYAxes2D();
+      for (int i = 0; i < yaxes.size(); i++) {
+        if (yaxes.at(i) == this) return i + 1;
+      }
+    } break;
+    case Axis2D::AxisOreantation::Top:
+    case Axis2D::AxisOreantation::Bottom: {
+      QList<Axis2D *> xaxes = getaxisrect_axis()->getXAxes2D();
+      for (int i = 0; i < xaxes.size(); i++) {
+        if (xaxes.at(i) == this) return i + 1;
+      }
+    } break;
+  }
+
+  return 0;
+}
 
 QSharedPointer<QCPAxisTicker> Axis2D::getticker_axis() { return ticker_; }
 
@@ -393,7 +436,7 @@ void Axis2D::setticklabelprecision_axis(const int value) {
   setNumberPrecision(value);
 }
 
-void Axis2D::settickertext(Column *col, int from, int to) {
+void Axis2D::settickertext(Column *col, const int from, const int to) {
   QSharedPointer<QCPAxisTickerText> textticker =
       qSharedPointerCast<QCPAxisTickerText>(ticker_);
   for (int i = 0, row = from; row <= to; row++, i++) {
@@ -648,7 +691,7 @@ bool Axis2D::load(XmlStreamReader *xmlreader) {
     double from = xmlreader->readAttributeDouble("from", &ok);
     if (ok) {
       setfrom_axis(from);
-      setRangeLower(from); // temporary fix the rescaling of axes
+      setRangeLower(from);  // temporary fix the rescaling of axes
     } else
       xmlreader->raiseWarning(tr("Axis2D from property setting error"));
     // to property
@@ -658,12 +701,11 @@ bool Axis2D::load(XmlStreamReader *xmlreader) {
     // Scaletype property
     QString scaletype = xmlreader->readAttributeString("scaletype", &ok);
     if (ok) {
-      (scaletype == "linear")
-          ? setscaletype_axis(AxisScaleType::Linear)
-          : (scaletype == "logarithemic")
-                ? setscaletype_axis(AxisScaleType::Logarithmic)
-                : xmlreader->raiseWarning(
-                      tr("Axis2D Scaletype property setting error"));
+      (scaletype == "linear") ? setscaletype_axis(AxisScaleType::Linear)
+      : (scaletype == "logarithemic")
+          ? setscaletype_axis(AxisScaleType::Logarithmic)
+          : xmlreader->raiseWarning(
+                tr("Axis2D Scaletype property setting error"));
     } else
       xmlreader->raiseWarning(tr("Axis2D Scaletype property setting error"));
 

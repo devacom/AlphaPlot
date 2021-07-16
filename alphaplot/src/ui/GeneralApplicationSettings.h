@@ -13,11 +13,29 @@ class ApplicationSettingsPage : public SettingsPage {
   ~ApplicationSettingsPage();
 
   void Load();
+  void LoadDefault();
   void Save();
-  void setTitle(QString title);
+  bool settingsChangeCheck();
+
+ signals:
+  void generalapplicationsettingsupdate();
 
  private:
+  void loadQsettingsValues();
+  void pickColor();
+  void pickApplicationFont();
+  void insertLanguagesList();
   Ui_ApplicationSettingsPage *ui;
+  bool glowstatus_;
+  QColor glowcolor_;
+  int glowradius_;
+  QString applanguage_;
+  QString defaultscriptinglang_;
+  bool autosave_;
+  int autosavetime_;
+  int undolimit_;
+  QFont applicationfont_;
+  bool autosearchupdates_;
 };
 
 #endif  // APPLICATIONSETTINGSPAGE_H

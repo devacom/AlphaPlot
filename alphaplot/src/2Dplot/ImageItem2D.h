@@ -15,6 +15,7 @@ class ImageItem2D : public QCPItemPixmap {
 
   AxisRect2D *getaxisrect() const;
   QString getsource_imageitem() const;
+  int getrotation_imageitem() const;
   QColor getstrokecolor_imageitem() const;
   double getstrokethickness_imageitem() const;
   Qt::PenStyle getstrokestyle_imageitem() const;
@@ -26,11 +27,13 @@ class ImageItem2D : public QCPItemPixmap {
   void setposition_imageitem(const QPointF origin);
 
   void setpixmap_imageitem();
+  void setrotation_imageitem(int degree);
 
   void save(XmlStreamWriter *xmlwriter);
   bool load(XmlStreamReader *xmlreader);
 
  protected:
+  void draw(QCPPainter *painter);
   void mousePressEvent(QMouseEvent *event, const QVariant &details);
   void mouseMoveEvent(QMouseEvent *event, const QPointF &startPos);
   void mouseReleaseEvent(QMouseEvent *event, const QPointF &startPos);
@@ -39,10 +42,14 @@ class ImageItem2D : public QCPItemPixmap {
   const static int selectionpixelsize_;
   AxisRect2D *axisrect_;
   QString layername_;
+  bool imageitemclicked_ ;
+  QCPItemAnchor *dragginganchorimageitem_ ;
   bool draggingimageitem_;
-  QPointF dragimageitemorigin_;
+  QPointF dragimageitemorigintopleft_;
+  QPointF dragimageitemoriginbottomright_;
   QString imagefilename_;
   QPixmap *pixmap_;
+  int rotation_;
   QCursor cursorshape_;
 };
 

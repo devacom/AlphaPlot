@@ -14,6 +14,7 @@ class Scatter3D;
 class XmlStreamReader;
 class XmlStreamWriter;
 class Custom3DInteractions;
+class ApplicationWindow;
 using namespace QtDataVisualization;
 
 class Layout3D : public MyWidget {
@@ -44,7 +45,7 @@ class Layout3D : public MyWidget {
   QSize getContainerSize() const;
   Graph3DCommon::Plot3DType getPlotType() const;
   void load(XmlStreamReader *xmlreader, QList<Table *> tabs,
-            QList<Matrix *> mats);
+            QList<Matrix *> mats, ApplicationWindow *app, bool setname = true);
   void loadCanvas(XmlStreamReader *xmlreader);
   void loadTheme(XmlStreamReader *xmlreader);
   void loadValueAxis(XmlStreamReader *xmlreader);
@@ -55,12 +56,17 @@ class Layout3D : public MyWidget {
   void saveValueAxis(XmlStreamWriter *xmlwriter, QValue3DAxis *axis);
   void saveCategoryAxis(XmlStreamWriter *xmlwriter, QCategory3DAxis *axis);
   QList<MyWidget *> dependentTableMatrix();
+  void copy(Layout3D *layout, QList<Table *> tables, QList<Matrix *> matrixs,
+            ApplicationWindow *app);
+  void print();
+  void copyToClipbord();
 
  signals:
   void dataAdded(MyWidget *mywidget);
+  void showContextMenu();
 
  private:
-  Graph3DCommon::Plot3DType plottype_;
+  const Graph3DCommon::Plot3DType plottype_;
   QWidget *main_widget_;
   Q3DSurface *graph3dsurface_;
   Q3DBars *graph3dbars_;

@@ -3,27 +3,32 @@
 #include "AxisRect2D.h"
 #include "DataManager2D.h"
 #include "ErrorBar2D.h"
+#include "PickerTool2D.h"
 #include "Table.h"
+#include "core/IconLoader.h"
 #include "core/Utilities.h"
 #include "future/core/column/Column.h"
 #include "future/lib/XmlStreamReader.h"
 #include "future/lib/XmlStreamWriter.h"
 
 Bar2D::Bar2D(Table *table, Column *xcol, Column *ycol, int from, int to,
-             Axis2D *xAxis, Axis2D *yAxis, int stackposition)
+             Axis2D *xAxis, Axis2D *yAxis, const BarStyle &style,
+             int stackposition)
     : QCPBars(xAxis, yAxis),
       barwidth_(1),
       xaxis_(xAxis),
       yaxis_(yAxis),
+      ishistogram_(false),
+      style_(style),
+      group_(nullptr),
       bardata_(new DataBlockBar(table, xcol, ycol, from, to)),
       histdata_(nullptr),
-      ishistogram_(false),
       xerrorbar_(nullptr),
       yerrorbar_(nullptr),
       xerroravailable_(false),
       yerroravailable_(false),
-      picker_(Graph2DCommon::Picker::None),
       stackposition_(stackposition) {
+  reloadIcon();
   init();
   setSelectable(QCP::SelectionType::stSingleData);
   QColor color = Utilities::getRandColorGoldenRatio(Utilities::ColorPal::Dark);
@@ -42,14 +47,16 @@ Bar2D::Bar2D(Table *table, Column *col, int from, int to, Axis2D *xAxis,
       barwidth_(1),
       xaxis_(xAxis),
       yaxis_(yAxis),
-      histdata_(new DataBlockHist(table, col, from, to)),
       ishistogram_(true),
+      style_(BarStyle::Individual),
+      group_(nullptr),
+      histdata_(new DataBlockHist(table, col, from, to)),
       xerrorbar_(nullptr),
       yerrorbar_(nullptr),
       xerroravailable_(false),
       yerroravailable_(false),
-      picker_(Graph2DCommon::Picker::None),
       stackposition_(-1) {
+  reloadIcon();
   init();
   setSelectable(QCP::SelectionType::stSingleData);
   QColor color = Utilities::getRandColorGoldenRatio(Utilities::ColorPal::Dark);
@@ -135,7 +142,12 @@ Qt::BrushStyle Bar2D::getfillstyle_barplot() const { return brush().style(); }
 
 DataBlockBar *Bar2D::getdatablock_barplot() const { return bardata_; }
 
-bool Bar2D::ishistogram_barplot() const { return ishistogram_; }
+bool Bar2D::ishistogram_barplot() const {
+  if (ishistogram_)
+    return true;
+  else
+    return false;
+}
 
 DataBlockHist *Bar2D::getdatablock_histplot() const { return histdata_; }
 
@@ -231,10 +243,6 @@ void Bar2D::setBarData(Table *table, Column *col, int from, int to) {
              histdata_->data()->at(0)->mainKey());
 }
 
-void Bar2D::setpicker_barplot(const Graph2DCommon::Picker picker) {
-  picker_ = picker;
-}
-
 void Bar2D::save(XmlStreamWriter *xmlwriter, int xaxis, int yaxis) {
   xmlwriter->writeStartElement("bar");
   // axis
@@ -264,10 +272,24 @@ void Bar2D::save(XmlStreamWriter *xmlwriter, int xaxis, int yaxis) {
     xmlwriter->writeAttribute("ycolumn", bardata_->getycolumn()->name());
     xmlwriter->writeAttribute("from", QString::number(bardata_->getfrom()));
     xmlwriter->writeAttribute("to", QString::number(bardata_->getto()));
+    switch (style_) {
+      case Bar2D::BarStyle::Individual:
+        xmlwriter->writeAttribute("style", "individual");
+        break;
+      case Bar2D::BarStyle::Grouped:
+        xmlwriter->writeAttribute("style", "grouped");
+        break;
+      case Bar2D::BarStyle::Stacked:
+        xmlwriter->writeAttribute("style", "stacked");
+        break;
+    }
     xmlwriter->writeAttribute("stackorder",
                               QString::number(getstackposition_barplot()));
   }
-  xmlwriter->writeAttribute("stackgap", QString::number(stackingGap()));
+  double stackorgroupgap;
+  (style_ == BarStyle::Grouped) ? stackorgroupgap = getBarGroup()->spacing()
+                                : stackorgroupgap = stackingGap();
+  xmlwriter->writeAttribute("stackgap", QString::number(stackorgroupgap));
   // error bar
   if (xerroravailable_) xerrorbar_->save(xmlwriter);
   if (yerroravailable_) yerrorbar_->save(xmlwriter);
@@ -345,11 +367,12 @@ bool Bar2D::load(XmlStreamReader *xmlreader) {
 
 void Bar2D::mousePressEvent(QMouseEvent *event, const QVariant &details) {
   if (event->button() == Qt::LeftButton) {
-    switch (picker_) {
+    switch (xaxis_->getaxisrect_axis()->getPickerTool()->getPicker()) {
       case Graph2DCommon::Picker::None:
       case Graph2DCommon::Picker::DataGraph:
       case Graph2DCommon::Picker::DragRange:
       case Graph2DCommon::Picker::ZoomRange:
+      case Graph2DCommon::Picker::DataRange:
         break;
       case Graph2DCommon::Picker::DataPoint:
         datapicker(event, details);
@@ -366,25 +389,78 @@ void Bar2D::mousePressEvent(QMouseEvent *event, const QVariant &details) {
 }
 
 void Bar2D::datapicker(QMouseEvent *, const QVariant &details) {
-  QCPBarsDataContainer::const_iterator it = data()->constEnd();
+  QCPBarsDataContainer::const_iterator it;
   QCPDataSelection dataPoints = details.value<QCPDataSelection>();
   if (dataPoints.dataPointCount() > 0) {
     dataPoints.dataRange();
     it = data()->at(dataPoints.dataRange().begin());
     QPointF point = coordsToPixels(it->mainKey(), it->mainValue());
-    emit showtooltip(point, it->mainKey(), it->mainValue(), getxaxis(),
-                     getyaxis());
+    xaxis_->getaxisrect_axis()->getPickerTool()->showtooltip(
+        point, it->mainKey(), it->mainValue(), getxaxis(), getyaxis());
   }
 }
 
-void Bar2D::movepicker(QMouseEvent *event, const QVariant &details) {}
+void Bar2D::movepicker(QMouseEvent *event, const QVariant &details) {
+  QCPBarsDataContainer::const_iterator it;
+  QCPDataSelection dataPoints = details.value<QCPDataSelection>();
+  if (dataPoints.dataPointCount() > 0) {
+    dataPoints.dataRange();
+    it = data()->at(dataPoints.dataRange().begin());
+    QPointF point = coordsToPixels(it->mainKey(), it->mainValue());
+    if (point.x() > event->localPos().x() - 10 &&
+        point.x() < event->localPos().x() + 10 &&
+        point.y() > event->localPos().y() - 10 &&
+        point.y() < event->localPos().y() + 10) {
+      xaxis_->getaxisrect_axis()->getPickerTool()->movepickermouspressbar(
+          this, it->mainKey(), it->mainValue(), getxaxis(), getyaxis());
+    }
+  }
+}
 
 void Bar2D::removepicker(QMouseEvent *, const QVariant &details) {
-  QCPBarsDataContainer::const_iterator it = data()->constEnd();
+  QCPBarsDataContainer::const_iterator it;
   QCPDataSelection dataPoints = details.value<QCPDataSelection>();
   if (dataPoints.dataPointCount() > 0) {
     dataPoints.dataRange();
     it = data()->at(dataPoints.dataRange().begin());
     bardata_->removedatafromtable(it->mainKey(), it->mainValue());
   }
+}
+
+void Bar2D::reloadIcon() {
+  if (ishistogram_) {
+    icon_ = IconLoader::load("graph2d-histogram", IconLoader::LightDark);
+    return;
+  }
+
+  ((xaxis_->getorientation_axis() == Axis2D::AxisOreantation::Top ||
+    xaxis_->getorientation_axis() == Axis2D::AxisOreantation::Bottom) &&
+   style_ == BarStyle::Individual)
+      ? icon_ = IconLoader::load("graph2d-vertical-bar", IconLoader::LightDark)
+  : ((xaxis_->getorientation_axis() != Axis2D::AxisOreantation::Top &&
+      xaxis_->getorientation_axis() != Axis2D::AxisOreantation::Bottom) &&
+     style_ == BarStyle::Individual)
+      ? icon_ =
+            IconLoader::load("graph2d-horizontal-bar", IconLoader::LightDark)
+  : ((xaxis_->getorientation_axis() == Axis2D::AxisOreantation::Top ||
+      xaxis_->getorientation_axis() == Axis2D::AxisOreantation::Bottom) &&
+     style_ == BarStyle::Grouped)
+      ? icon_ = IconLoader::load("graph2d-vertical-group-bar",
+                                 IconLoader::LightDark)
+  : ((xaxis_->getorientation_axis() != Axis2D::AxisOreantation::Top &&
+      xaxis_->getorientation_axis() != Axis2D::AxisOreantation::Bottom) &&
+     style_ == BarStyle::Grouped)
+      ? icon_ = IconLoader::load("graph2d-horizontal-group-bar",
+                                 IconLoader::LightDark)
+  : ((xaxis_->getorientation_axis() == Axis2D::AxisOreantation::Top ||
+      xaxis_->getorientation_axis() == Axis2D::AxisOreantation::Bottom) &&
+     style_ == BarStyle::Stacked)
+      ? icon_ = IconLoader::load("graph2d-vertical-stack-bar",
+                                 IconLoader::LightDark)
+  : ((xaxis_->getorientation_axis() != Axis2D::AxisOreantation::Top &&
+      xaxis_->getorientation_axis() != Axis2D::AxisOreantation::Bottom) &&
+     style_ == BarStyle::Stacked)
+      ? icon_ = IconLoader::load("graph2d-horizontal-stack-bar",
+                                 IconLoader::LightDark)
+      : icon_ = QIcon();
 }

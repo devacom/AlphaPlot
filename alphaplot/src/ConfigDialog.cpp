@@ -485,7 +485,7 @@ void ConfigDialog::initAppPage() {
   topBoxLayout->addWidget(lblLanguage, 0, 0);
   boxLanguage = new QComboBox();
   insertLanguagesList();
-  boxLanguage->addItem("English");
+  //boxLanguage->addItem("English");
   topBoxLayout->addWidget(boxLanguage, 0, 1);
 
   lblStyle = new QLabel();
@@ -1047,9 +1047,9 @@ void ConfigDialog::apply() {
   }
 
   app_->columnSeparator = sep;
-  app_->customizeTables(buttonBackground->color(), buttonText->color(),
+  /*app_->customizeTables(buttonBackground->color(), buttonText->color(),
                         buttonHeader->color(), textFont, headerFont,
-                        boxTableComments->isChecked());
+                        boxTableComments->isChecked());*/
   // 2D plots page: options tab
   app_->titleOn = boxTitle->isChecked();
   app_->allAxesOn = boxAllAxes->isChecked();
@@ -1079,8 +1079,8 @@ void ConfigDialog::apply() {
   // general page: application tab
   app_->changeAppFont(appFont);
   setFont(appFont);
-  app_->changeAppStyle(boxStyle->currentText());
-  app_->changeAppColorScheme(boxColorScheme->currentIndex());
+  //app_->changeAppStyle(boxStyle->currentText());
+  //app_->changeAppColorScheme(boxColorScheme->currentIndex());
 #ifdef SEARCH_FOR_UPDATES
   app_->autoSearchUpdates = boxSearchUpdates->isChecked();
 #endif
@@ -1127,9 +1127,9 @@ void ConfigDialog::apply() {
 
   // general page: confirmations tab
   app_->confirmCloseFolder = boxFolders->isChecked();
-  app_->updateConfirmOptions(boxTables->isChecked(), boxMatrices->isChecked(),
-                             boxPlots2D->isChecked(), boxPlots3D->isChecked(),
-                             boxNotes->isChecked());
+  //app_->updateConfirmOptions(boxTables->isChecked(), boxMatrices->isChecked(),
+  //                           boxPlots2D->isChecked(), boxPlots3D->isChecked(),
+  //                           boxNotes->isChecked());
   // general page: colors tab
   // app->setAppColors(btnWorkspace->color(), btnPanels->color(),
   //                  btnPanelsText->color());
@@ -1408,7 +1408,7 @@ void ConfigDialog::insertLanguagesList() {
       languages.push_back("English");
     else {
       QTranslator translator;
-      translator.load("AlphaPlot_" + locales[i], app_->qmPath);
+      translator.load("alphaplot_" + locales[i], app_->qmPath);
 
       QString language = translator.translate("ApplicationWindow", "English",
                                               "translate this to the language "

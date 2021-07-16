@@ -17,6 +17,24 @@
 * add Polynomial, Cubic Periodic, Akima Periodic, and Steffen Interpolation
 * add 3D polar plot options and a 2D polar spectrogram with camera position on top
 * 2D axis from to precision setting based on axis tick precision
+* add symbol/glyph browser
+* new settings dialog
+* duplicate plot2D and plot3D windows
+* swap plot2D layouts
+* optional legend title
+* center plot on print plot2D
+* clone plot2D and Plot3D
+* svae plot3D
+* print plot3D
+* upgrade qcustomplot library to 2.1.0
+* improve plot3D mouse interactions
+* subwindow creation time load/save fixed
+* show function details on property browser function plot item
+* make property browser plo2D items dynamically change icons based on plot property change
+* save/load grouped bars plot2D
+* enable move picker on plot2D
+* make image item resizable & rotatable plot2D
+* use Axis2D label as object browser item name
 
 === 06-05-20 Forth release of AlphaPlot (Alpha stage) - major release ===
 * multipeak fitting fixed

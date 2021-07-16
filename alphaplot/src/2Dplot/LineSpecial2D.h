@@ -47,6 +47,7 @@ class LineSpecial2D : public QCPGraph {
   DataBlockGraph *getdatablock_lsplot() const { return graphdata_; }
   ErrorBar2D *getxerrorbar_lsplot() { return xerrorbar_; }
   ErrorBar2D *getyerrorbar_lsplot() { return yerrorbar_; }
+  QIcon getIcon() const { return icon_; }
   // Setters
   void setlinetype_lsplot(const Graph2DCommon::LineStyleType &line);
   void setlinestrokestyle_lsplot(const Qt::PenStyle &style);
@@ -54,7 +55,7 @@ class LineSpecial2D : public QCPGraph {
   void setlinestrokethickness_lsplot(const double value);
   void setlinefillstatus_lsplot(bool status);
   void setlinefillcolor_lsplot(const QColor &color);
-  void  setlinefillstyle_lsplot(const Qt::BrushStyle &style);
+  void setlinefillstyle_lsplot(const Qt::BrushStyle &style);
   void setlineantialiased_lsplot(const bool value);
   void setscattershape_lsplot(const Graph2DCommon::ScatterStyle &shape);
   void setscatterfillcolor_lsplot(const QColor &color);
@@ -67,16 +68,9 @@ class LineSpecial2D : public QCPGraph {
   void setlegendtext_lsplot(const QString &legendtext);
   void setxaxis_lsplot(Axis2D *axis);
   void setyaxis_lsplot(Axis2D *axis);
-  void setpicker_lsplot(const Graph2DCommon::Picker picker);
 
   void save(XmlStreamWriter *xmlwriter, int xaxis, int yaxis);
   bool load(XmlStreamReader *xmlreader);
-
- protected:
-  // void mousePressEvent(QMouseEvent *event, const QVariant &details);
-  // void mouseMoveEvent(QMouseEvent *event, const QPointF &startPos);
-  void keyPressEvent(QKeyEvent *event);
-  void keyreleaseEvent(QKeyEvent *event);
 
  protected:
   void mousePressEvent(QMouseEvent *event, const QVariant &details);
@@ -85,10 +79,7 @@ class LineSpecial2D : public QCPGraph {
   void datapicker(QMouseEvent *event, const QVariant &details);
   void movepicker(QMouseEvent *event, const QVariant &details);
   void removepicker(QMouseEvent *event, const QVariant &details);
-
- signals:
-  void showtooltip(QPointF position, double xval, double yval, Axis2D *xaxis,
-                   Axis2D *yaxos);
+  void reloadIcon();
 
  private:
   Axis2D *xAxis_;
@@ -101,8 +92,7 @@ class LineSpecial2D : public QCPGraph {
   QString layername_;
   bool xerroravailable_;
   bool yerroravailable_;
-  Graph2DCommon::Picker picker_;
-  // PlotPoint *mPointUnderCursor;
+  QIcon icon_;
 };
 
 #endif  // LINESCATTER2D_H

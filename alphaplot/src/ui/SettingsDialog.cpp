@@ -14,17 +14,24 @@
 
    Description : central settings dialog */
 
-#include "../widgets/aSettingsListView.h"
-#include "../core/IconLoader.h"
 #include "SettingsDialog.h"
-#include "SettingsPage.h"
-#include "ui_SettingsDialog.h"
+
+#include <QDebug>
+#include <QStandardItem>
+#include <QStandardItemModel>
+
+#include "../core/IconLoader.h"
+#include "../widgets/aSettingsListView.h"
+#include "FittingSettings.h"
 #include "GeneralApplicationSettings.h"
 #include "GeneralAppreanceSettings.h"
-
-#include <QStandardItemModel>
-#include <QStandardItem>
-#include <QDebug>
+#include "GeneralConfirmationSettings.h"
+#include "GeneralNumericFormatSettings.h"
+#include "SettingsPage.h"
+#include "TableBasicSettings.h"
+#include "TableColorSettings.h"
+#include "TableFontSettings.h"
+#include "ui_SettingsDialog.h"
 
 SettingsDialog::SettingsDialog(QWidget* parent)
     : QDialog(parent),
@@ -46,8 +53,8 @@ SettingsDialog::SettingsDialog(QWidget* parent)
   setMinimumSize(sizeHint());
 
   // Colors (TODO: use some central qpalette handling)
-  baseColor_ = palette().color(QPalette::Base);
-  fontColor_ = palette().color(QPalette::Text);
+  baseColor_ = qApp->palette().color(QPalette::Base);
+  fontColor_ = qApp->palette().color(QPalette::Text);
 
   // adjust layout spacing & margins.
   ui_->settingGridLayout->setSpacing(3);
@@ -58,14 +65,14 @@ SettingsDialog::SettingsDialog(QWidget* parent)
   ui_->scrollVerticalLayout->setContentsMargins(0, 0, 0, 0);
   ui_->stackGridLayout->setSpacing(0);
   ui_->stackGridLayout->setContentsMargins(0, 0, 0, 0);
+  ui_->scrollAreaWidgetContents->setContentsMargins(0, 0, 0, 0);
+  // ui_->scrollAreaWidgetContents->setSpacing(0);
 
   // Setup search box.
   ui_->searchBox->setMaximumWidth(300);
   ui_->searchBox->setToolTip(tr("search"));
 
   // Prepare buttons
-  ui_->configureButton->setIcon(
-      IconLoader::load("edit-preference", IconLoader::LightDark));
   ui_->settingsButton->setIcon(
       IconLoader::load("go-previous", IconLoader::LightDark));
   ui_->settingsButton->setEnabled(false);
@@ -79,32 +86,31 @@ SettingsDialog::SettingsDialog(QWidget* parent)
   iconView_->setCheckable(true);
   settingsViewMenu_->addAction(treeView_);
   settingsViewMenu_->addAction(iconView_);
-  ui_->configureButton->setMenu(settingsViewMenu_);
 
   // Prepare scrollarea.
   QString scrollbackcol =
-      "QScrollArea {background-color : "
-      "rgba(%1,%2,%3,%4); border: 0;}";
+      ".QScrollArea {border: 0; background-color: rgba(%1,%2,%3,%4);}";
   ui_->scrollArea->setStyleSheet(scrollbackcol.arg(baseColor_.red())
                                      .arg(baseColor_.green())
                                      .arg(baseColor_.blue())
                                      .arg(baseColor_.alpha()));
+  ui_->settingsButton->setStyleSheet(
+      "QPushButton {background-color : rgba(0,0,0,0);border: 0 "
+      "rgba(0,0,0,0);}");
 
   // Prepare label.
   QString label_font_color =
-      "QLabel {color : rgba(%1,%2,%3,%4);"
+      "QLabel {background-color : rgba(0,0,0,0);"
       " padding-left: 10px;"
       " padding-right: 10px;"
       " padding-top: 10px;"
-      " padding-bottom: 10px}";
-  ui_->generalLabel->setStyleSheet(label_font_color.arg(fontColor_.red())
-                                       .arg(fontColor_.green())
-                                       .arg(fontColor_.blue())
-                                       .arg(150));
-  ui_->plot2dLabel->setStyleSheet(label_font_color.arg(fontColor_.red())
-                                      .arg(fontColor_.green())
-                                      .arg(fontColor_.blue())
-                                      .arg(150));
+      " padding-bottom: 10px; border: 0 rgba(0,0,0,0);}";
+  ui_->generalLabel->setStyleSheet(label_font_color);
+  ui_->tableLabel->setStyleSheet(label_font_color);
+  ui_->plot2dLabel->setStyleSheet(label_font_color);
+  ui_->plot3dLabel->setStyleSheet(label_font_color);
+  ui_->fittingLabel->setStyleSheet(label_font_color);
+  ui_->scriptingLabel->setStyleSheet(label_font_color);
   ui_->generalLabel->hide();
   ui_->tableLabel->hide();
   ui_->plot2dLabel->hide();
@@ -113,38 +119,63 @@ SettingsDialog::SettingsDialog(QWidget* parent)
   ui_->scriptingLabel->hide();
 
   // Add pages to stack widget
-  addPage(General, Page_GeneralApplication, new ApplicationSettingsPage(this));
-  addPage(General, Page_GeneralConfirmation, new ApplicationSettingsPage(this));
-  addPage(General, Page_GeneralAppearance, new GeneralAppreanceSettings(this));
+  // addPage(General, Page_RootSettings, new ApplicationSettingsPage(this));
+  ApplicationSettingsPage* generalapplicationsettings =
+      new ApplicationSettingsPage(this);
+  GeneralConfirmationSettings* generalconfirmationsettings =
+      new GeneralConfirmationSettings(this);
+  GeneralAppreanceSettings* generalappearancesettings =
+      new GeneralAppreanceSettings(this);
+  GeneralNumericFormatSettings* generalnumericformatsettings =
+      new GeneralNumericFormatSettings(this);
+  TableBasicSettings* tablebasicsettings = new TableBasicSettings(this);
+  TableColorSettings* tablecolorsettings = new TableColorSettings(this);
+  TableFontSettings* tablefontsettings = new TableFontSettings(this);
+  FittingSettings* fittingsettings = new FittingSettings(this);
+  addPage(General, Page_GeneralApplication, generalapplicationsettings);
+  addPage(General, Page_GeneralConfirmation, generalconfirmationsettings);
+  addPage(General, Page_GeneralAppearance, generalappearancesettings);
+  addPage(General, Page_GeneralNumericFormat, generalnumericformatsettings);
+  addPage(Table, Page_TableBasic, tablebasicsettings);
+  addPage(Table, Page_TableColor, tablecolorsettings);
+  addPage(Table, Page_TableFont, tablefontsettings);
+  addPage(Fitting, Page_Fitting, fittingsettings);
 
-  // Make standard item models for listviews & add items
-  QStandardItemModel* iStandardModel = new QStandardItemModel(this);
-  QStandardItem* item1 =
-      new QStandardItem(QIcon(":/data/document-open-remote.png"), "Open");
-  QStandardItem* item2 =
-      new QStandardItem(QIcon(":/data/document-save.png"), "Save");
-  QStandardItem* item3 =
-      new QStandardItem(QIcon(":/data/drive-removable-media-usb-pendrive.png"),
-                        "Removable Drive");
-  QStandardItem* item4 =
-      new QStandardItem(QIcon(":/data/download.png"), "Download");
-  QStandardItem* item5 =
-      new QStandardItem(QIcon(":/data/ipodtouchicon.png"), "Ipod Touch Device");
-  QStandardItem* item6 = new QStandardItem(
-      QIcon(":/data/multimedia-player-ipod-mini-pink.png"), "Ipod Mini");
-  QStandardItem* item7 = new QStandardItem(QIcon(":/data/qtlogo.png"), "Qt");
-  iStandardModel->appendRow(item1);
-  iStandardModel->appendRow(item2);
-  iStandardModel->appendRow(item3);
-  iStandardModel->appendRow(item4);
-  iStandardModel->appendRow(item5);
-  iStandardModel->appendRow(item6);
-  iStandardModel->appendRow(item7);
+  connect(generalapplicationsettings,
+          &ApplicationSettingsPage::generalapplicationsettingsupdate, this,
+          &SettingsDialog::generalapplicationsettingsupdates);
+  connect(generalconfirmationsettings,
+          &GeneralConfirmationSettings::generalconfirmationsettingsupdate, this,
+          &SettingsDialog::generalconfirmationsettingsupdates);
+  connect(generalappearancesettings,
+          &GeneralAppreanceSettings::generalappreancesettingsupdate, this,
+          &SettingsDialog::generalappreancesettingsupdates);
+  connect(
+      generalappearancesettings,
+      &GeneralAppreanceSettings::generalappreancesettingsupdate, this, [=]() {
+        baseColor_ = ui_->searchBox->palette().color(QPalette::Base);
+        fontColor_ = palette().color(QPalette::Text);
+        QString scrollbackcol =
+            ".QScrollArea {border: 0; background-color: rgba(%1,%2,%3,%4);}";
+        ui_->scrollArea->setStyleSheet(scrollbackcol.arg(baseColor_.red())
+                                           .arg(baseColor_.green())
+                                           .arg(baseColor_.blue())
+                                           .arg(baseColor_.alpha()));
+      });
+  connect(generalnumericformatsettings,
+          &GeneralNumericFormatSettings::generalnumericformatsettingsupdate,
+          this, &SettingsDialog::generalnumericformatsettingsupdates);
+  connect(tablebasicsettings, &TableBasicSettings::tablebasicsettingsupdate,
+          this, &SettingsDialog::tablebasicsettingsupdates);
+  connect(tablecolorsettings, &TableColorSettings::tablecolorsettingsupdate,
+          this, &SettingsDialog::tablecolorsettingsupdates);
+  connect(tablefontsettings, &TableFontSettings::tablefontsettingsupdate,
+          this, &SettingsDialog::tablefontsettingsupdates);
 
   // Set model to the view
   ui_->generalListView->setModel(generalSettingsModel_);
   ui_->tableListView->setModel(tableSettingsModel_);
-  ui_->plot2dListView->setModel(iStandardModel);
+  ui_->plot2dListView->setModel(plot2dSettingsModel_);
   ui_->plot3dListView->setModel(plot3dSettingsModel_);
   ui_->fittingListView->setModel(fittingSettingsModel_);
   ui_->scriptingListView->setModel(scriptingSettingsModel_);
@@ -154,10 +185,16 @@ SettingsDialog::SettingsDialog(QWidget* parent)
           SLOT(getBackToRootSettingsPage()));
   connect(ui_->generalListView, SIGNAL(clicked(const QModelIndex&)), this,
           SLOT(generalEnsureSelection(const QModelIndex&)));
+  connect(ui_->tableListView, SIGNAL(clicked(const QModelIndex&)), this,
+          SLOT(tableEnsureSelection(const QModelIndex&)));
   connect(ui_->plot2dListView, SIGNAL(clicked(const QModelIndex&)), this,
           SLOT(plot2dEnsureSelection(const QModelIndex&)));
-  connect(ui_->generalListView, SIGNAL(doubleClicked(QModelIndex)), this,
-          SLOT(test(QModelIndex)));
+  connect(ui_->plot3dListView, SIGNAL(clicked(const QModelIndex&)), this,
+          SLOT(plot3dEnsureSelection(const QModelIndex&)));
+  connect(ui_->fittingListView, SIGNAL(clicked(const QModelIndex&)), this,
+          SLOT(fittingEnsureSelection(const QModelIndex&)));
+  connect(ui_->scriptingListView, SIGNAL(clicked(const QModelIndex&)), this,
+          SLOT(scriptingEnsureSelection(const QModelIndex&)));
 }
 
 SettingsDialog::~SettingsDialog() { delete ui_; }
@@ -197,32 +234,26 @@ void SettingsDialog::addPage(Catagory catogory, Page id, SettingsPage* page) {
   switch (catogory) {
     case General:
       generalSettingsModel_->appendRow(item);
-      page->setTitle(tr("General ") + page->windowTitle());
       if (ui_->generalLabel->isHidden()) ui_->generalLabel->show();
       break;
     case Table:
       tableSettingsModel_->appendRow(item);
-      page->setTitle(tr("Table ") + page->windowTitle());
       if (ui_->tableLabel->isHidden()) ui_->tableLabel->show();
       break;
     case Plot2d:
       plot2dSettingsModel_->appendRow(item);
-      page->setTitle(tr("2DPlot ") + page->windowTitle());
       if (ui_->plot2dLabel->isHidden()) ui_->plot2dLabel->show();
       break;
     case Plot3d:
       plot3dSettingsModel_->appendRow(item);
-      page->setTitle(tr("3DPlot ") + page->windowTitle());
       if (ui_->plot3dLabel->isHidden()) ui_->plot3dLabel->show();
       break;
     case Fitting:
       fittingSettingsModel_->appendRow(item);
-      page->setTitle(tr("Fitting ") + page->windowTitle());
       if (ui_->fittingLabel->isHidden()) ui_->fittingLabel->show();
       break;
     case Scripting:
       scriptingSettingsModel_->appendRow(item);
-      page->setTitle(tr("Scripting ") + page->windowTitle());
       if (ui_->scriptingLabel->isHidden()) ui_->scriptingLabel->show();
       break;
     default:
@@ -235,6 +266,7 @@ void SettingsDialog::addPage(Catagory catogory, Page id, SettingsPage* page) {
 
   // Add page to stackwidget at position id
   ui_->stackedWidget->insertWidget(id, page);
+  // ui_->stackedWidget->addWidget(page);
 }
 
 void SettingsDialog::handleResizeBeforeListviewVisible(
@@ -261,18 +293,17 @@ void SettingsDialog::clearAllSelection() {
 }
 
 void SettingsDialog::getBackToRootSettingsPage() {
-  ui_->stackedWidget->setCurrentIndex(Page_RootSettings);
-  ui_->searchBox->show();
-  ui_->configureButton->show();
-  ui_->settingsButton->setEnabled(false);
-}
-
-void SettingsDialog::test(QModelIndex mod) {
-  qDebug() << "sugnal recived " << mod.row() << mod.data().toString();
-  ui_->stackedWidget->setCurrentIndex(mod.row() + 1);
-  ui_->searchBox->hide();
-  ui_->configureButton->hide();
-  ui_->settingsButton->setEnabled(true);
+  QWidget* w = ui_->stackedWidget->currentWidget();
+  SettingsPage* sp = dynamic_cast<SettingsPage*>(w);
+  bool result = true;
+  if (sp) {
+    result = sp->settingsChangeCheck();
+  }
+  if (result) {
+    ui_->stackedWidget->setCurrentIndex(Page_RootSettings);
+    ui_->searchBox->show();
+    ui_->settingsButton->setEnabled(false);
+  }
 }
 
 // when ported to QT5, use lambda functions insted of slots.
@@ -280,29 +311,58 @@ void SettingsDialog::test(QModelIndex mod) {
 void SettingsDialog::generalEnsureSelection(const QModelIndex& index) {
   clearAllSelection();
   ui_->generalListView->setCurrentIndex(index);
+  ui_->stackedWidget->setCurrentIndex(index.row() + 1);
+  ui_->searchBox->hide();
+  ui_->settingsButton->setEnabled(true);
 }
 
 void SettingsDialog::tableEnsureSelection(const QModelIndex& index) {
   clearAllSelection();
   ui_->tableListView->setCurrentIndex(index);
+  ui_->stackedWidget->setCurrentIndex(index.row() +
+                                      generalSettingsModel_->rowCount() + 1);
+  ui_->searchBox->hide();
+  ui_->settingsButton->setEnabled(true);
 }
 
 void SettingsDialog::plot2dEnsureSelection(const QModelIndex& index) {
   clearAllSelection();
   ui_->plot2dListView->setCurrentIndex(index);
+  ui_->stackedWidget->setCurrentIndex(index.row() +
+                                      generalSettingsModel_->rowCount() +
+                                      tableSettingsModel_->rowCount() + 1);
+  ui_->searchBox->hide();
+  ui_->settingsButton->setEnabled(true);
 }
 
 void SettingsDialog::plot3dEnsureSelection(const QModelIndex& index) {
   clearAllSelection();
   ui_->plot3dListView->setCurrentIndex(index);
+  ui_->stackedWidget->setCurrentIndex(
+      index.row() + generalSettingsModel_->rowCount() +
+      tableSettingsModel_->rowCount() + plot2dSettingsModel_->rowCount() + 1);
+  ui_->searchBox->hide();
+  ui_->settingsButton->setEnabled(true);
 }
 
 void SettingsDialog::fittingEnsureSelection(const QModelIndex& index) {
   clearAllSelection();
   ui_->fittingListView->setCurrentIndex(index);
+  ui_->stackedWidget->setCurrentIndex(
+      index.row() + generalSettingsModel_->rowCount() +
+      tableSettingsModel_->rowCount() + plot2dSettingsModel_->rowCount() +
+      plot3dSettingsModel_->rowCount() + 1);
+  ui_->searchBox->hide();
+  ui_->settingsButton->setEnabled(true);
 }
 
 void SettingsDialog::scriptingEnsureSelection(const QModelIndex& index) {
   clearAllSelection();
   ui_->scriptingListView->setCurrentIndex(index);
+  ui_->stackedWidget->setCurrentIndex(
+      index.row() + generalSettingsModel_->rowCount() +
+      tableSettingsModel_->rowCount() + plot2dSettingsModel_->rowCount() +
+      plot3dSettingsModel_->rowCount() + fittingSettingsModel_->rowCount() + 1);
+  ui_->searchBox->hide();
+  ui_->settingsButton->setEnabled(true);
 }

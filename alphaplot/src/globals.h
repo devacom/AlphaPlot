@@ -31,9 +31,9 @@
 #ifndef ALPHA_PLOT_GLOBALS_H
 #define ALPHA_PLOT_GLOBALS_H
 
+#include <QColor>
 #include <QObject>
 #include <QString>
-#include <QColor>
 
 //! Definition of global constants and enums
 /**
@@ -57,23 +57,6 @@ class AlphaPlot : public QObject {
   static const char* forum_Uri;
   static const char* bugreport_Uri;
   static const char* download_Uri;
-
-  // Table header/comment height
-  static int headerHeight;
-  static int commentHeaderHeight;
-
-  // Table header color codes
-  static QColor xColorCode;
-  static QColor yColorCode;
-  static QColor zColorCode;
-  static QColor xErrColorCode;
-  static QColor yErrColorCode;
-  static QColor noneColorCode;
-
-  // Table header color code geometry
-  static int colorCodeThickness;
-  static int colorCodeXPadding;
-  static int colorCodeYPadding;
 
   //! Types of plot designations
   enum PlotDesignation {
@@ -127,6 +110,8 @@ class AlphaPlot : public QObject {
   static QString originalAuthor();
 
   static QString originalAuthorWithMail();
+  static QStringList getLocales();
+  static void setLocales(QStringList locales);
 
  private:
   /* 0xMMmmbb means MM.mm.bb with<br>
@@ -139,6 +124,7 @@ class AlphaPlot : public QObject {
   static const char* extra_version;
   // Release date
   static const QDate release_date;
+  static QStringList locales_;
 };
 
 #endif  // ALPHA_PLOT_GLOBALS_H

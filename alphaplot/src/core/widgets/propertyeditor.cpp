@@ -440,6 +440,9 @@ PropertyEditor::PropertyEditor(QWidget *parent, ApplicationWindow *app)
       doubleManager_->addProperty("Pixel Position X");
   itempropertyimagepixelpositionyitem_ =
       doubleManager_->addProperty("Pixel Position Y");
+  itempropertyimagerotationitem_ = intManager_->addProperty("Rotation");
+  intManager_->setMinimum(itempropertyimagerotationitem_, 0);
+  intManager_->setMaximum(itempropertyimagerotationitem_, 360);
   itempropertyimagesourceitem_ = stringManager_->addProperty("Source");
   itempropertyimagesourceitem_->setEnabled(false);
   itempropertyimagestrokecoloritem_ =
@@ -695,14 +698,13 @@ PropertyEditor::PropertyEditor(QWidget *parent, ApplicationWindow *app)
       boolManager_->addProperty("Scatter Antialiased");
   cplotpropertylegendvisibleitem_ = boolManager_->addProperty("Legend");
   cplotpropertylegendtextitem_ = stringManager_->addProperty("Plot Legend");
-  cplotpropertylegendvisibleitem_->addSubProperty(
-      cplotpropertylegendtextitem_);
+  cplotpropertylegendvisibleitem_->addSubProperty(cplotpropertylegendtextitem_);
 
   // Box Properties block
   barplotpropertyxaxisitem_ = enumManager_->addProperty("X Axis");
   barplotpropertyyaxisitem_ = enumManager_->addProperty("Y Axis");
   barplotpropertywidthitem_ = doubleManager_->addProperty("Width");
-  barplotpropertystackgapitem_ = doubleManager_->addProperty("Stack Gap");
+  barplotpropertystackgapitem_ = doubleManager_->addProperty("Stack/Group Gap");
   barplotpropertyfillantialiaseditem_ =
       boolManager_->addProperty("Fill Antialiased");
   barplotpropertyfillcoloritem_ = colorManager_->addProperty("Fill Color");
@@ -857,7 +859,7 @@ PropertyEditor::PropertyEditor(QWidget *parent, ApplicationWindow *app)
   vectorpropertylegendvisibleitem_ = boolManager_->addProperty("Legend");
   vectorpropertylegendtextitem_ = stringManager_->addProperty("Plot Legend");
   vectorpropertylegendvisibleitem_->addSubProperty(
-    vectorpropertylegendtextitem_);
+      vectorpropertylegendtextitem_);
 
   // Pie Properties Block
   QStringList piestyle;
@@ -1418,10 +1420,10 @@ PropertyEditor::PropertyEditor(QWidget *parent, ApplicationWindow *app)
           SLOT(selectObjectItem(QTreeWidgetItem *)));
   connect(objectbrowser_, &MyTreeWidget::activate,
           [=](MyWidget *widget) { app_->activateWindow(widget); });
-  connect(objectbrowser_, &MyTreeWidget::adderrorbar, this,
-          &PropertyEditor::adderrorbar);
-  connect(objectbrowser_, &MyTreeWidget::swaplayout, app_,
-          &ApplicationWindow::showSwapLayoutDialog);
+  connect(objectbrowser_, &MyTreeWidget::itemRootContextMenuRequested, app_,
+          &ApplicationWindow::showWindowTitleBarMenu);
+  connect(objectbrowser_, &MyTreeWidget::itemContextMenuRequested, app_,
+          &ApplicationWindow::itemContextMenuRequested);
   connect(boolManager_, SIGNAL(valueChanged(QtProperty *, bool)), this,
           SLOT(valueChange(QtProperty *, const bool &)));
   connect(colorManager_, SIGNAL(valueChanged(QtProperty *, QColor)), this,
@@ -1466,7 +1468,7 @@ PropertyEditor::~PropertyEditor() { delete ui_; }
 MyTreeWidget *PropertyEditor::getObjectBrowser() { return objectbrowser_; }
 
 void PropertyEditor::myWidgetConnections(MyWidget *widget) {
-  connect(widget, &MyWidget::geometrychange, [=]() {
+  connect(widget, &MyWidget::geometrychange, this, [=]() {
     if (objectbrowser_->currentItem() &&
         static_cast<MyTreeWidget::PropertyItemType>(
             objectbrowser_->currentItem()
@@ -1482,7 +1484,7 @@ void PropertyEditor::myWidgetConnections(MyWidget *widget) {
 }
 
 void PropertyEditor::tableConnections(Table *table) {
-  connect(table, &Table::modifiedWindow, [=]() {
+  connect(table, &Table::modifiedWindow, this, [=]() {
     if (objectbrowser_->currentItem() &&
         static_cast<MyTreeWidget::PropertyItemType>(
             objectbrowser_->currentItem()
@@ -1498,7 +1500,7 @@ void PropertyEditor::tableConnections(Table *table) {
 }
 
 void PropertyEditor::matrixConnections(Matrix *matrix) {
-  connect(matrix, &Matrix::modifiedWindow, [=]() {
+  connect(matrix, &Matrix::modifiedWindow, this, [=]() {
     if (objectbrowser_->currentItem() &&
         static_cast<MyTreeWidget::PropertyItemType>(
             objectbrowser_->currentItem()
@@ -1628,6 +1630,7 @@ void PropertyEditor::valueChange(QtProperty *prop, const bool value) {
     lsgraph->setlinefillstatus_lsplot(value);
     lsgraph->setlinefillstyle_lsplot(static_cast<Qt::BrushStyle>(
         enumManager_->value(lsplotpropertylinefillstyleitem_) + 1));
+    objectbrowser_->currentItem()->setIcon(0, lsgraph->getIcon());
     lsgraph->layer()->replot();
   } else if (prop->compare(lsplotpropertylineantialiaseditem_)) {
     LineSpecial2D *lsgraph =
@@ -1686,6 +1689,7 @@ void PropertyEditor::valueChange(QtProperty *prop, const bool value) {
     curve->setlinefillstatus_cplot(value);
     curve->setlinefillstyle_cplot(static_cast<Qt::BrushStyle>(
         enumManager_->value(cplotpropertylinefillstyleitem_) + 1));
+    objectbrowser_->currentItem()->setIcon(0, curve->getIcon());
     curve->layer()->replot();
     curve->getxaxis()->getaxisrect_axis()->getLegend()->layer()->replot();
   } else if (prop->compare(cplotpropertylineantialiaseditem_)) {
@@ -2324,7 +2328,7 @@ void PropertyEditor::valueChange(QtProperty *prop, const QRect &rect) {
     margin.setBottom(rect.bottom());
     legend->setMargins(margin);
     legend->layer()->replot();
-    } else if (prop->compare(itempropertytextmarginitem_)) {
+  } else if (prop->compare(itempropertytextmarginitem_)) {
     TextItem2D *textitem =
         getgraph2dobject<TextItem2D>(objectbrowser_->currentItem());
     QMargins margin;
@@ -2528,14 +2532,14 @@ void PropertyEditor::valueChange(QtProperty *prop, const double &value) {
         getgraph2dobject<ImageItem2D>(objectbrowser_->currentItem());
     QPointF point = imageitem->position("topLeft")->pixelPosition();
     point.setX(value);
-    imageitem->position("topLeft")->setPixelPosition(point);
+    imageitem->setposition_imageitem(point);
     imageitem->layer()->replot();
   } else if (prop->compare(itempropertyimagepixelpositionyitem_)) {
     ImageItem2D *imageitem =
         getgraph2dobject<ImageItem2D>(objectbrowser_->currentItem());
     QPointF point = imageitem->position("topLeft")->pixelPosition();
     point.setY(value);
-    imageitem->position("topLeft")->setPixelPosition(point);
+    imageitem->setposition_imageitem(point);
     imageitem->layer()->replot();
   } else if (prop->compare(itempropertyimagestrokethicknessitem_)) {
     ImageItem2D *imageitem =
@@ -2630,7 +2634,9 @@ void PropertyEditor::valueChange(QtProperty *prop, const double &value) {
     bar->getxaxis()->getaxisrect_axis()->getLegend()->layer()->replot();
   } else if (prop->compare(barplotpropertystackgapitem_)) {
     Bar2D *bar = getgraph2dobject<Bar2D>(objectbrowser_->currentItem());
-    bar->setStackingGap(value);
+    (bar->getBarStyle() == Bar2D::BarStyle::Grouped)
+        ? bar->getBarGroup()->setSpacing(value)
+        : bar->setStackingGap(value);
     bar->layer()->replot();
     bar->getxaxis()->getaxisrect_axis()->getLegend()->layer()->replot();
   } else if (prop->compare(barplotpropertystrokethicknessitem_)) {
@@ -2881,6 +2887,8 @@ void PropertyEditor::valueChange(QtProperty *prop, const QString &value) {
   } else if (prop->compare(axispropertylabeltextitem_)) {
     Axis2D *axis = getgraph2dobject<Axis2D>(objectbrowser_->currentItem());
     axis->setLabel(Utilities::splitstring(value));
+    objectbrowser_->currentItem()->setText(
+        0, axis->getname_axis() + QString::number(axis->getnumber_axis()));
     axis->layer()->replot();
   } else if (prop->compare(itempropertylegendtitletextitem_)) {
     Legend2D *legend =
@@ -3121,6 +3129,11 @@ void PropertyEditor::valueChange(QtProperty *prop, const int value) {
         getgraph2dobject<ColorMap2D>(objectbrowser_->currentItem());
     colormap->setlevelcount_colormap(value);
     colormap->layer()->replot();
+  } else if (prop->compare(itempropertyimagerotationitem_)) {
+    ImageItem2D *imageitem =
+        getgraph2dobject<ImageItem2D>(objectbrowser_->currentItem());
+    imageitem->setrotation_imageitem(value);
+    imageitem->layer()->replot();
   } else if (prop->compare(plot3dvalueaxistickcountitem_)) {
     QValue3DAxis *axis =
         getgraph2dobject<QValue3DAxis>(objectbrowser_->currentItem());
@@ -3319,6 +3332,7 @@ void PropertyEditor::enumValueChange(QtProperty *prop, const int value) {
         getgraph2dobject<LineSpecial2D>(objectbrowser_->currentItem());
     lsgraph->setlinetype_lsplot(
         static_cast<Graph2DCommon::LineStyleType>(value));
+    objectbrowser_->currentItem()->setIcon(0, lsgraph->getIcon());
     lsgraph->layer()->replot();
     lsgraph->getxaxis()->getaxisrect_axis()->getLegend()->layer()->replot();
   } else if (prop->compare(lsplotpropertylinestroketypeitem_)) {
@@ -3477,6 +3491,7 @@ void PropertyEditor::enumValueChange(QtProperty *prop, const int value) {
   } else if (prop->compare(cplotpropertylinestyleitem_)) {
     Curve2D *curve = getgraph2dobject<Curve2D>(objectbrowser_->currentItem());
     curve->setlinetype_cplot(value);
+    objectbrowser_->currentItem()->setIcon(0, curve->getIcon());
     curve->layer()->replot();
   } else if (prop->compare(cplotpropertylinestroketypeitem_)) {
     Curve2D *curve = getgraph2dobject<Curve2D>(objectbrowser_->currentItem());
@@ -3490,6 +3505,7 @@ void PropertyEditor::enumValueChange(QtProperty *prop, const int value) {
     Curve2D *curve = getgraph2dobject<Curve2D>(objectbrowser_->currentItem());
     curve->setscattershape_cplot(
         static_cast<Graph2DCommon::ScatterStyle>(value));
+    objectbrowser_->currentItem()->setIcon(0, curve->getIcon());
     curve->layer()->replot();
   } else if (prop->compare(cplotpropertyscatterstrokestyleitem_)) {
     Curve2D *curve = getgraph2dobject<Curve2D>(objectbrowser_->currentItem());
@@ -3643,6 +3659,7 @@ void PropertyEditor::enumValueChange(QtProperty *prop, const int value) {
   } else if (prop->compare(pieplotpropertystyleitem_)) {
     Pie2D *pie = getgraph2dobject<Pie2D>(objectbrowser_->currentItem());
     pie->setstyle_pieplot(static_cast<Graph2DCommon::PieStyle>(value));
+    objectbrowser_->currentItem()->setIcon(0, pie->getIcon());
     pie->layer()->replot();
     pie->getaxisrect()->replotBareBones();
     pie->getaxisrect()->getLegend()->layer()->replot();
@@ -4162,7 +4179,8 @@ void PropertyEditor::Grid2DPropertyBlock(AxisRect2D *axisrect) {
     int xcount = 0;
     QList<Axis2D *> xaxes = axisrect->getXAxes2D();
     for (int i = 0; i < xaxes.size(); i++) {
-      lsxaxislist << QString("X Axis %1").arg(i + 1);
+      lsxaxislist << xaxes.at(i)->getname_axis() +
+                         QString::number(xaxes.at(i)->getnumber_axis());
       if (xaxes.at(i) == gridpair.first.second) {
         currentxaxis = xcount;
       }
@@ -4207,7 +4225,8 @@ void PropertyEditor::Grid2DPropertyBlock(AxisRect2D *axisrect) {
     QList<Axis2D *> yaxes = axisrect->getYAxes2D();
 
     for (int i = 0; i < yaxes.size(); i++) {
-      lsyaxislist << QString("Y Axis %1").arg(i + 1);
+      lsyaxislist << yaxes.at(i)->getname_axis() +
+                         QString::number(yaxes.at(i)->getnumber_axis());
       if (yaxes.at(i) == gridpair.second.second) {
         currentyaxis = ycount;
       }
@@ -4418,6 +4437,7 @@ void PropertyEditor::ImageItem2DPropertyBlock(ImageItem2D *imageitem) {
   propertybrowser_->addProperty(itempropertyimagesourceitem_);
   propertybrowser_->addProperty(itempropertyimagepixelpositionxitem_);
   propertybrowser_->addProperty(itempropertyimagepixelpositionyitem_);
+  propertybrowser_->addProperty(itempropertyimagerotationitem_);
   propertybrowser_->addProperty(itempropertyimagestrokecoloritem_);
   propertybrowser_->addProperty(itempropertyimagestrokethicknessitem_);
   propertybrowser_->addProperty(itempropertyimagestroketypeitem_);
@@ -4426,6 +4446,8 @@ void PropertyEditor::ImageItem2DPropertyBlock(ImageItem2D *imageitem) {
                            imageitem->position("topLeft")->pixelPosition().x());
   doubleManager_->setValue(itempropertyimagepixelpositionyitem_,
                            imageitem->position("topLeft")->pixelPosition().y());
+  intManager_->setValue(itempropertyimagerotationitem_,
+                        imageitem->getrotation_imageitem());
   stringManager_->setValue(itempropertyimagesourceitem_,
                            imageitem->getsource_imageitem());
   colorManager_->setValue(itempropertyimagestrokecoloritem_,
@@ -4465,7 +4487,8 @@ void PropertyEditor::LineSpecial2DPropertyBlock(LineSpecial2D *lsgraph,
     QList<Axis2D *> yaxes = axisrect->getYAxes2D();
 
     for (int i = 0; i < yaxes.size(); i++) {
-      lsyaxislist << QString("Y Axis %1").arg(i + 1);
+      lsyaxislist << yaxes.at(i)->getname_axis() +
+                         QString::number(yaxes.at(i)->getnumber_axis());
       if (yaxes.at(i) == lsgraph->getyaxis()) {
         currentyaxis = ycount;
       }
@@ -4481,7 +4504,8 @@ void PropertyEditor::LineSpecial2DPropertyBlock(LineSpecial2D *lsgraph,
     int xcount = 0;
     QList<Axis2D *> xaxes = axisrect->getXAxes2D();
     for (int i = 0; i < xaxes.size(); i++) {
-      lsxaxislist << QString("X Axis %1").arg(i + 1);
+      lsxaxislist << xaxes.at(i)->getname_axis() +
+                         QString::number(xaxes.at(i)->getnumber_axis());
       if (xaxes.at(i) == lsgraph->getxaxis()) {
         currentxaxis = xcount;
       }
@@ -4548,7 +4572,8 @@ void PropertyEditor::LineSpecialChannel2DPropertyBlock(LineSpecial2D *lsgraph1,
     QList<Axis2D *> yaxes = axisrect->getYAxes2D();
 
     for (int i = 0; i < yaxes.size(); i++) {
-      lsyaxislist << QString("Y Axis %1").arg(i + 1);
+      lsyaxislist << yaxes.at(i)->getname_axis() +
+                         QString::number(yaxes.at(i)->getnumber_axis());
       if (yaxes.at(i) == lsgraph1->getyaxis()) {
         currentyaxis = ycount;
       }
@@ -4564,7 +4589,8 @@ void PropertyEditor::LineSpecialChannel2DPropertyBlock(LineSpecial2D *lsgraph1,
     int xcount = 0;
     QList<Axis2D *> xaxes = axisrect->getXAxes2D();
     for (int i = 0; i < xaxes.size(); i++) {
-      lsxaxislist << QString("X Axis %1").arg(i + 1);
+      lsxaxislist << xaxes.at(i)->getname_axis() +
+                         QString::number(xaxes.at(i)->getnumber_axis());
       if (xaxes.at(i) == lsgraph1->getxaxis()) {
         currentxaxis = xcount;
       }
@@ -4667,7 +4693,8 @@ void PropertyEditor::Curve2DPropertyBlock(Curve2D *curve,
     QList<Axis2D *> yaxes = axisrect->getYAxes2D();
 
     for (int i = 0; i < yaxes.size(); i++) {
-      cyaxislist << QString("Y Axis %1").arg(i + 1);
+      cyaxislist << yaxes.at(i)->getname_axis() +
+                        QString::number(yaxes.at(i)->getnumber_axis());
       if (yaxes.at(i) == curve->getyaxis()) {
         currentyaxis = ycount;
       }
@@ -4683,7 +4710,8 @@ void PropertyEditor::Curve2DPropertyBlock(Curve2D *curve,
     int xcount = 0;
     QList<Axis2D *> xaxes = axisrect->getXAxes2D();
     for (int i = 0; i < xaxes.size(); i++) {
-      cxaxislist << QString("X Axis %1").arg(i + 1);
+      cxaxislist << xaxes.at(i)->getname_axis() +
+                        QString::number(xaxes.at(i)->getnumber_axis());
       if (xaxes.at(i) == curve->getxaxis()) {
         currentxaxis = xcount;
       }
@@ -4758,7 +4786,8 @@ void PropertyEditor::Bar2DPropertyBlock(Bar2D *bargraph, AxisRect2D *axisrect) {
           Axis2D::AxisOreantation::Bottom) {
     QList<Axis2D *> yaxes = axisrect->getYAxes2D();
     for (int i = 0; i < yaxes.size(); i++) {
-      baryaxislist << QString("Y Axis %1").arg(i + 1);
+      baryaxislist << yaxes.at(i)->getname_axis() +
+                          QString::number(yaxes.at(i)->getnumber_axis());
       if (yaxes.at(i) == bargraph->getyaxis()) {
         currentyaxis = ycount;
       }
@@ -4767,7 +4796,8 @@ void PropertyEditor::Bar2DPropertyBlock(Bar2D *bargraph, AxisRect2D *axisrect) {
   } else {
     QList<Axis2D *> yaxes = axisrect->getXAxes2D();
     for (int i = 0; i < yaxes.size(); i++) {
-      baryaxislist << QString("X Axis %1").arg(i + 1);
+      baryaxislist << yaxes.at(i)->getname_axis() +
+                          QString::number(yaxes.at(i)->getnumber_axis());
       if (yaxes.at(i) == bargraph->getyaxis()) {
         currentyaxis = ycount;
       }
@@ -4786,7 +4816,8 @@ void PropertyEditor::Bar2DPropertyBlock(Bar2D *bargraph, AxisRect2D *axisrect) {
           Axis2D::AxisOreantation::Bottom) {
     QList<Axis2D *> xaxes = axisrect->getXAxes2D();
     for (int i = 0; i < xaxes.size(); i++) {
-      barxaxislist << QString("X Axis %1").arg(i + 1);
+      barxaxislist << xaxes.at(i)->getname_axis() +
+                          QString::number(xaxes.at(i)->getnumber_axis());
       if (xaxes.at(i) == bargraph->getxaxis()) {
         currentxaxis = xcount;
       }
@@ -4795,7 +4826,8 @@ void PropertyEditor::Bar2DPropertyBlock(Bar2D *bargraph, AxisRect2D *axisrect) {
   } else {
     QList<Axis2D *> xaxes = axisrect->getYAxes2D();
     for (int i = 0; i < xaxes.size(); i++) {
-      barxaxislist << QString("Y Axis %1").arg(i + 1);
+      barxaxislist << xaxes.at(i)->getname_axis() +
+                          QString::number(xaxes.at(i)->getnumber_axis());
       if (xaxes.at(i) == bargraph->getxaxis()) {
         currentxaxis = xcount;
       }
@@ -4806,8 +4838,11 @@ void PropertyEditor::Bar2DPropertyBlock(Bar2D *bargraph, AxisRect2D *axisrect) {
   enumManager_->setValue(barplotpropertyxaxisitem_, currentxaxis);
 
   doubleManager_->setValue(barplotpropertywidthitem_, bargraph->width());
-  doubleManager_->setValue(barplotpropertystackgapitem_,
-                           bargraph->stackingGap());
+  double spacing;
+  (bargraph->getBarStyle() == Bar2D::BarStyle::Grouped)
+      ? spacing = bargraph->getBarGroup()->spacing()
+      : spacing = bargraph->stackingGap();
+  doubleManager_->setValue(barplotpropertystackgapitem_, spacing);
   boolManager_->setValue(barplotpropertyfillantialiaseditem_,
                          bargraph->antialiasedFill());
   colorManager_->setValue(barplotpropertyfillcoloritem_,
@@ -4882,7 +4917,8 @@ void PropertyEditor::StatBox2DPropertyBlock(StatBox2D *statbox,
     QList<Axis2D *> yaxes = axisrect->getYAxes2D();
 
     for (int i = 0; i < yaxes.size(); i++) {
-      statboxyaxislist << QString("Y Axis %1").arg(i + 1);
+      statboxyaxislist << yaxes.at(i)->getname_axis() +
+                              QString::number(yaxes.at(i)->getnumber_axis());
       if (yaxes.at(i) == statbox->getyaxis()) {
         currentyaxis = ycount;
       }
@@ -4898,7 +4934,8 @@ void PropertyEditor::StatBox2DPropertyBlock(StatBox2D *statbox,
     int xcount = 0;
     QList<Axis2D *> xaxes = axisrect->getXAxes2D();
     for (int i = 0; i < xaxes.size(); i++) {
-      statboxxaxislist << QString("X Axis %1").arg(i + 1);
+      statboxxaxislist << xaxes.at(i)->getname_axis() +
+                              QString::number(xaxes.at(i)->getnumber_axis());
       if (xaxes.at(i) == statbox->getxaxis()) {
         currentxaxis = xcount;
       }
@@ -4992,7 +5029,8 @@ void PropertyEditor::Vector2DPropertyBlock(Vector2D *vectorgraph,
     QList<Axis2D *> yaxes = axisrect->getYAxes2D();
 
     for (int i = 0; i < yaxes.size(); i++) {
-      vectoryaxislist << QString("Y Axis %1").arg(i + 1);
+      vectoryaxislist << yaxes.at(i)->getname_axis() +
+                             QString::number(yaxes.at(i)->getnumber_axis());
       if (yaxes.at(i) == vectorgraph->getyaxis()) {
         currentyaxis = ycount;
       }
@@ -5008,7 +5046,8 @@ void PropertyEditor::Vector2DPropertyBlock(Vector2D *vectorgraph,
     int xcount = 0;
     QList<Axis2D *> xaxes = axisrect->getXAxes2D();
     for (int i = 0; i < xaxes.size(); i++) {
-      vectorxaxislist << QString("X Axis %1").arg(i + 1);
+      vectorxaxislist << xaxes.at(i)->getname_axis() +
+                             QString::number(xaxes.at(i)->getnumber_axis());
       if (xaxes.at(i) == vectorgraph->getxaxis()) {
         currentxaxis = xcount;
       }
@@ -5595,6 +5634,28 @@ void PropertyEditor::populateObjectBrowser(MyWidget *widget) {
       "<tr> <td align=\"right\">Column Y :</td><td>%3</td></tr>"
       "<tr> <td align=\"right\">From :</td><td>%4</td></tr>"
       "<tr> <td align=\"right\">To :</td><td>%5</td></tr>");
+  QString tooltiptextfuncxy = QString(
+      "<tr> <td align=\"right\">Type :</td><td>%1</td></tr>"
+      "<tr> <td align=\"right\">Function :</td><td>%2</td></tr>"
+      "<tr> <td align=\"right\">From :</td><td>%3</td></tr>"
+      "<tr> <td align=\"right\">To :</td><td>%4</td></tr>"
+      "<tr> <td align=\"right\">Points :</td><td>%5</td></tr>");
+  QString tooltiptextfuncparam = QString(
+      "<tr> <td align=\"right\">Type :</td><td>%1</td></tr>"
+      "<tr> <td align=\"right\">Function X :</td><td>%2</td></tr>"
+      "<tr> <td align=\"right\">Function Y :</td><td>%3</td></tr>"
+      "<tr> <td align=\"right\">Parameter :</td><td>%4</td></tr>"
+      "<tr> <td align=\"right\">From :</td><td>%5</td></tr>"
+      "<tr> <td align=\"right\">To :</td><td>%6</td></tr>"
+      "<tr> <td align=\"right\">Points :</td><td>%7</td></tr>");
+  QString tooltiptextfuncpolar = QString(
+      "<tr> <td align=\"right\">Type :</td><td>%1</td></tr>"
+      "<tr> <td align=\"right\">Function R :</td><td>%2</td></tr>"
+      "<tr> <td align=\"right\">Function Theta :</td><td>%3</td></tr>"
+      "<tr> <td align=\"right\">Parameter :</td><td>%4</td></tr>"
+      "<tr> <td align=\"right\">From :</td><td>%5</td></tr>"
+      "<tr> <td align=\"right\">To :</td><td>%6</td></tr>"
+      "<tr> <td align=\"right\">Points :</td><td>%7</td></tr>");
   QString tooltiptextxyyy = QString(
       "<tr> <td align=\"right\">Table :</td><td>%1</td></tr>"
       "<tr> <td align=\"right\">Column :</td><td>%2</td></tr>"
@@ -5614,6 +5675,15 @@ void PropertyEditor::populateObjectBrowser(MyWidget *widget) {
       "<tr> <td align=\"right\">Matrix :</td><td>%1</td></tr>"
       "<tr> <td align=\"right\">Rows :</td><td>%2</td></tr>"
       "<tr> <td align=\"right\">Columns :</td><td>%4</td></tr>");
+  QString tooltiptextfuncsurface = QString(
+      "<tr> <td align=\"right\">Function :</td><td>%1</td></tr>"
+      "<tr> <td align=\"right\">xl :</td><td>%2</td></tr>"
+      "<tr> <td align=\"right\">xu :</td><td>%3</td></tr>"
+      "<tr> <td align=\"right\">yl :</td><td>%4</td></tr>"
+      "<tr> <td align=\"right\">yu :</td><td>%5</td></tr>"
+      "<tr> <td align=\"right\">zl :</td><td>%6</td></tr>"
+      "<tr> <td align=\"right\">zu :</td><td>%7</td></tr>"
+      "<tr> <td align=\"right\">Points :</td><td>%8</td></tr>");
 
   // window
   {
@@ -5699,12 +5769,14 @@ void PropertyEditor::populateObjectBrowser(MyWidget *widget) {
 
         switch (axis->getorientation_axis()) {
           case Axis2D::AxisOreantation::Bottom:
-            axistext = QString("X Axis: " + QString::number(j + 1));
+            axistext = QString(axis->getname_axis() +
+                               QString::number(axis->getnumber_axis()));
             axisitem->setIcon(0, IconLoader::load("graph2d-axis-bottom",
                                                   IconLoader::LightDark));
             break;
           case Axis2D::AxisOreantation::Top:
-            axistext = QString("X Axis: " + QString::number(j + 1));
+            axistext = QString(axis->getname_axis() +
+                               QString::number(axis->getnumber_axis()));
             axisitem->setIcon(
                 0, IconLoader::load("graph2d-axis-top", IconLoader::LightDark));
             break;
@@ -5731,12 +5803,14 @@ void PropertyEditor::populateObjectBrowser(MyWidget *widget) {
 
         switch (axis->getorientation_axis()) {
           case Axis2D::AxisOreantation::Left:
-            axistext = QString("Y Axis: " + QString::number(j + 1));
+            axistext = QString(axis->getlabeltext_axis() + "(Y) :" +
+                               QString::number(axis->getnumber_axis()));
             axisitem->setIcon(0, IconLoader::load("graph2d-axis-left",
                                                   IconLoader::LightDark));
             break;
           case Axis2D::AxisOreantation::Right:
-            axistext = QString("Y Axis: " + QString::number(j + 1));
+            axistext = QString(axis->getlabeltext_axis() + "(Y) :" +
+                               QString::number(axis->getnumber_axis()));
             axisitem->setIcon(0, IconLoader::load("graph2d-axis-right",
                                                   IconLoader::LightDark));
             break;
@@ -5868,8 +5942,7 @@ void PropertyEditor::populateObjectBrowser(MyWidget *widget) {
                                       .arg(QString::number(data->getfrom() + 1))
                                       .arg(QString::number(data->getto() + 1));
             lsgraphitem->setToolTip(0, tooltiptext);
-            lsgraphitem->setIcon(
-                0, IconLoader::load("graph2d-line", IconLoader::LightDark));
+            lsgraphitem->setIcon(0, lsgraph->getIcon());
             lsgraphitem->setData(
                 0, Qt::UserRole,
                 static_cast<int>(
@@ -5947,6 +6020,7 @@ void PropertyEditor::populateObjectBrowser(MyWidget *widget) {
             QTreeWidgetItem *curvegraphitem =
                 new QTreeWidgetItem(static_cast<QTreeWidget *>(nullptr),
                                     QStringList(curvegraphtext));
+            curvegraphitem->setIcon(0, curvegraph->getIcon());
             switch (curvegraph->getplottype_cplot()) {
               case Graph2DCommon::PlotType::Associated: {
                 DataBlockCurve *data = curvegraph->getdatablock_cplot();
@@ -5963,24 +6037,71 @@ void PropertyEditor::populateObjectBrowser(MyWidget *widget) {
                         .arg(QString::number(data->getfrom() + 1))
                         .arg(QString::number(data->getto() + 1));
                 curvegraphitem->setToolTip(0, tooltiptext);
-                if (curvegraph->getcurvetype_cplot() ==
-                    Curve2D::Curve2DType::Curve) {
-                  curvegraphitem->setIcon(
-                      0,
-                      IconLoader::load("graph2d-curve", IconLoader::LightDark));
-                } else
-                  curvegraphitem->setIcon(
-                      0, IconLoader::load("graph2d-spline",
-                                          IconLoader::LightDark));
               } break;
-              case Graph2DCommon::PlotType::Function:
+              case Graph2DCommon::PlotType::Function: {
                 curvegraphtext = QString("Function %1").arg(function++);
-                curvegraphitem->setIcon(
-                    0, IconLoader::load("graph2d-function-xy",
-                                        IconLoader::LightDark));
                 curvegraphitem->setText(0, curvegraphtext);
-                curvegraphitem->setToolTip(0, curvegraphtext);
-                break;
+                PlotData::FunctionData funcdata =
+                    curvegraph->getfuncdata_cplot();
+                switch (funcdata.type) {
+                  case 0: {
+                    QString functype, func;
+                    if (funcdata.functions.size() == 1) {
+                      functype = QString(tr("Normal XY"));
+                      func = funcdata.functions.at(0);
+                    } else {
+                      functype = QString(tr("Unknown"));
+                      func = QString(tr("unknown"));
+                    }
+                    curvegraphitem->setToolTip(0, QString(tooltiptextfuncxy)
+                                                      .arg(functype)
+                                                      .arg(func)
+                                                      .arg(funcdata.from)
+                                                      .arg(funcdata.to)
+                                                      .arg(funcdata.points));
+                  } break;
+                  case 1: {
+                    QString functype, func1, func2;
+                    if (funcdata.functions.size() == 2) {
+                      functype = QString(tr("Parametric"));
+                      func1 = funcdata.functions.at(0);
+                      func2 = funcdata.functions.at(1);
+                    } else {
+                      functype = QString(tr("Unknown"));
+                      func1 = QString(tr("unknown"));
+                      func2 = QString(tr("unknown"));
+                    }
+                    curvegraphitem->setToolTip(0, QString(tooltiptextfuncparam)
+                                                      .arg(functype)
+                                                      .arg(func1)
+                                                      .arg(func2)
+                                                      .arg(funcdata.parameter)
+                                                      .arg(funcdata.from)
+                                                      .arg(funcdata.to)
+                                                      .arg(funcdata.points));
+                  } break;
+                  case 2: {
+                    QString functype, func1, func2;
+                    if (funcdata.functions.size() == 2) {
+                      functype = QString(tr("Polar"));
+                      func1 = funcdata.functions.at(0);
+                      func2 = funcdata.functions.at(1);
+                    } else {
+                      functype = QString(tr("Unknown"));
+                      func1 = QString(tr("unknown"));
+                      func2 = QString(tr("unknown"));
+                    }
+                    curvegraphitem->setToolTip(0, QString(tooltiptextfuncpolar)
+                                                      .arg(functype)
+                                                      .arg(func1)
+                                                      .arg(func2)
+                                                      .arg(funcdata.parameter)
+                                                      .arg(funcdata.from)
+                                                      .arg(funcdata.to)
+                                                      .arg(funcdata.points));
+                  } break;
+                }
+              } break;
             }
             curvegraphitem->setData(
                 0, Qt::UserRole,
@@ -6066,8 +6187,7 @@ void PropertyEditor::populateObjectBrowser(MyWidget *widget) {
                     .arg(QString::number(statbox->getfrom_statbox() + 1))
                     .arg(QString::number(statbox->getto_statbox() + 1));
             statboxitem->setToolTip(0, tooltip);
-            statboxitem->setIcon(
-                0, IconLoader::load("graph2d-box", IconLoader::LightDark));
+            statboxitem->setIcon(0, statbox->getIcon());
             statboxitem->setData(
                 0, Qt::UserRole,
                 static_cast<int>(
@@ -6107,8 +6227,7 @@ void PropertyEditor::populateObjectBrowser(MyWidget *widget) {
                     .arg(QString::number(vector->getfrom_vecplot() + 1))
                     .arg(QString::number(vector->getto_vecplot() + 1));
             vectoritem->setToolTip(0, tooltiptext);
-            vectoritem->setIcon(0, IconLoader::load("graph2d-vector-xy",
-                                                    IconLoader::LightDark));
+            vectoritem->setIcon(0, vector->getIcon());
             vectoritem->setData(
                 0, Qt::UserRole,
                 static_cast<int>(MyTreeWidget::PropertyItemType::Plot2DVector));
@@ -6174,6 +6293,7 @@ void PropertyEditor::populateObjectBrowser(MyWidget *widget) {
             QString bartext = QString("Histogram");
             QTreeWidgetItem *baritem = new QTreeWidgetItem(
                 static_cast<QTreeWidget *>(nullptr), QStringList(bartext));
+            baritem->setIcon(0, bar->getIcon());
             if (bar->ishistogram_barplot()) {
               bartext =
                   bar->getdatablock_histplot()->gettable()->name() + "_" +
@@ -6192,8 +6312,6 @@ void PropertyEditor::populateObjectBrowser(MyWidget *widget) {
                           bar->getdatablock_histplot()->getto() + 1));
               baritem->setToolTip(0, tooltiptext);
               baritem->setText(0, bartext);
-              baritem->setIcon(0, IconLoader::load("graph2d-histogram",
-                                                   IconLoader::LightDark));
             } else {
               DataBlockBar *data = bar->getdatablock_barplot();
               bartext = data->gettable()->name() + "_" +
@@ -6202,32 +6320,7 @@ void PropertyEditor::populateObjectBrowser(MyWidget *widget) {
                         QString::number(data->getfrom() + 1) + ":" +
                         QString::number(data->getto() + 1) + "]";
               baritem->setText(0, bartext);
-              if ((bar->getxaxis()->getorientation_axis() ==
-                       Axis2D::AxisOreantation::Top ||
-                   bar->getxaxis()->getorientation_axis() ==
-                       Axis2D::AxisOreantation::Bottom) &&
-                  bar->getstackposition_barplot() == -1) {
-                baritem->setIcon(0, IconLoader::load("graph2d-vertical-bar",
-                                                     IconLoader::LightDark));
-              } else if ((bar->getxaxis()->getorientation_axis() ==
-                              Axis2D::AxisOreantation::Top ||
-                          bar->getxaxis()->getorientation_axis() ==
-                              Axis2D::AxisOreantation::Bottom) &&
-                         bar->getstackposition_barplot() != -1) {
-                baritem->setIcon(0,
-                                 IconLoader::load("graph2d-vertical-stack-bar",
-                                                  IconLoader::LightDark));
-              } else if ((bar->getxaxis()->getorientation_axis() !=
-                              Axis2D::AxisOreantation::Top &&
-                          bar->getxaxis()->getorientation_axis() !=
-                              Axis2D::AxisOreantation::Bottom) &&
-                         bar->getstackposition_barplot() == -1) {
-                baritem->setIcon(0, IconLoader::load("graph2d-horizontal-bar",
-                                                     IconLoader::LightDark));
-              } else
-                baritem->setIcon(
-                    0, IconLoader::load("graph2d-horizontal-stack-bar",
-                                        IconLoader::LightDark));
+
               QString tooltiptext =
                   tooltiptextxy.arg(data->gettable()->name())
                       .arg(data->getxcolumn()->name())
@@ -6321,8 +6414,7 @@ void PropertyEditor::populateObjectBrowser(MyWidget *widget) {
                     .arg(QString::number(pie->getfrom_pieplot() + 1))
                     .arg(QString::number(pie->getto_pieplot() + 1));
             pieitem->setToolTip(0, tooltip);
-            pieitem->setIcon(
-                0, IconLoader::load("graph2d-pie", IconLoader::LightDark));
+            pieitem->setIcon(0, pie->getIcon());
             pieitem->setData(
                 0, Qt::UserRole,
                 static_cast<int>(
@@ -6596,10 +6688,21 @@ void PropertyEditor::populateObjectBrowser(MyWidget *widget) {
           foreach (DataBlockSurface3D *block,
                    lout->getSurface3DModifier()->getData()) {
             QString surfaceseriesitemtext;
-            (block->ismatrix())
-                ? surfaceseriesitemtext =
-                      tr("%1").arg(block->getmatrix()->name())
-                : surfaceseriesitemtext = tr("function %1").arg(count++);
+            if (block->ismatrix()) {
+              surfaceseriesitemtext = tr("%1").arg(block->getmatrix()->name());
+              tooltiptextfuncsurface = surfaceseriesitemtext;
+            } else {
+              surfaceseriesitemtext = tr("function %1").arg(count++);
+              tooltiptextfuncsurface =
+                  tooltiptextfuncsurface.arg(block->getfunction())
+                      .arg(QString::number(block->getxlower()))
+                      .arg(QString::number(block->getxupper()))
+                      .arg(QString::number(block->getylower()))
+                      .arg(QString::number(block->getyupper()))
+                      .arg(QString::number(block->getzlower()))
+                      .arg(QString::number(block->getzupper()))
+                      .arg(QString::number(block->getxpoints()));
+            }
             QTreeWidgetItem *surfaceseriesitem =
                 new QTreeWidgetItem(static_cast<QTreeWidget *>(nullptr));
             surfaceseriesitem->setIcon(0,
@@ -6610,7 +6713,7 @@ void PropertyEditor::populateObjectBrowser(MyWidget *widget) {
                 static_cast<int>(
                     MyTreeWidget::PropertyItemType::Plot3DSurfaceDataBlock));
             surfaceseriesitem->setText(0, surfaceseriesitemtext);
-            surfaceseriesitem->setToolTip(0, surfaceseriesitemtext);
+            surfaceseriesitem->setToolTip(0, tooltiptextfuncsurface);
             surfaceseriesitem->setData(0, Qt::UserRole + 1,
                                        QVariant::fromValue<void *>(block));
             plot3ditem->addChild(surfaceseriesitem);
@@ -6734,12 +6837,17 @@ void PropertyEditor::populateObjectBrowser(MyWidget *widget) {
 
 void PropertyEditor::axisrectConnections(AxisRect2D *axisrect) {
   // created
-  connect(axisrect, &AxisRect2D::Axis2DCreated, [=]() {
+  connect(axisrect, &AxisRect2D::Axis2DCreated, this, [=]() {
     axisrect->parentPlot()->replot(
         QCustomPlot::RefreshPriority::rpQueuedRefresh);
     objectschanged();
   });
-  connect(axisrect->getLegend(), &Legend2D::legendMoved, [=]() {
+  connect(axisrect, &AxisRect2D::Axis2DCloned, this, [=]() {
+    axisrect->parentPlot()->replot(
+        QCustomPlot::RefreshPriority::rpQueuedRefresh);
+    objectschanged();
+  });
+  connect(axisrect->getLegend(), &Legend2D::legendMoved, this, [=]() {
     if (objectbrowser_->currentItem() &&
         static_cast<MyTreeWidget::PropertyItemType>(
             objectbrowser_->currentItem()
@@ -6757,7 +6865,7 @@ void PropertyEditor::axisrectConnections(AxisRect2D *axisrect) {
       }
     }
   });
-  connect(axisrect, &AxisRect2D::TextItem2DMoved, [=]() {
+  connect(axisrect, &AxisRect2D::TextItem2DMoved, this, [=]() {
     if (objectbrowser_->currentItem() &&
         static_cast<MyTreeWidget::PropertyItemType>(
             objectbrowser_->currentItem()
@@ -6775,7 +6883,7 @@ void PropertyEditor::axisrectConnections(AxisRect2D *axisrect) {
       }
     }
   });
-  connect(axisrect, &AxisRect2D::LineItem2DMoved, [=]() {
+  connect(axisrect, &AxisRect2D::LineItem2DMoved, this, [=]() {
     if (objectbrowser_->currentItem() &&
         static_cast<MyTreeWidget::PropertyItemType>(
             objectbrowser_->currentItem()
@@ -6798,7 +6906,7 @@ void PropertyEditor::axisrectConnections(AxisRect2D *axisrect) {
       }
     }
   });
-  connect(axisrect, &AxisRect2D::ImageItem2DMoved, [=]() {
+  connect(axisrect, &AxisRect2D::ImageItem2DMoved, this, [=]() {
     if (objectbrowser_->currentItem() &&
         static_cast<MyTreeWidget::PropertyItemType>(
             objectbrowser_->currentItem()
@@ -6817,137 +6925,137 @@ void PropertyEditor::axisrectConnections(AxisRect2D *axisrect) {
     }
   });
 
-  connect(axisrect, &AxisRect2D::TextItem2DCreated, [=]() {
+  connect(axisrect, &AxisRect2D::TextItem2DCreated, this, [=]() {
     axisrect->parentPlot()->replot(
         QCustomPlot::RefreshPriority::rpQueuedRefresh);
     objectschanged();
   });
-  connect(axisrect, &AxisRect2D::LineItem2DCreated, [=]() {
+  connect(axisrect, &AxisRect2D::LineItem2DCreated, this, [=]() {
     axisrect->parentPlot()->replot(
         QCustomPlot::RefreshPriority::rpQueuedRefresh);
     objectschanged();
   });
-  connect(axisrect, &AxisRect2D::ImageItem2DCreated, [=]() {
+  connect(axisrect, &AxisRect2D::ImageItem2DCreated, this, [=]() {
     axisrect->parentPlot()->replot(
         QCustomPlot::RefreshPriority::rpQueuedRefresh);
     objectschanged();
   });
-  connect(axisrect, &AxisRect2D::LineSpecial2DCreated, [=]() {
+  connect(axisrect, &AxisRect2D::LineSpecial2DCreated, this, [=]() {
     axisrect->parentPlot()->replot(
         QCustomPlot::RefreshPriority::rpQueuedRefresh);
     objectschanged();
   });
-  connect(axisrect, &AxisRect2D::LineSpecialChannel2DCreated, [=]() {
+  connect(axisrect, &AxisRect2D::LineSpecialChannel2DCreated, this, [=]() {
     axisrect->parentPlot()->replot(
         QCustomPlot::RefreshPriority::rpQueuedRefresh);
     objectschanged();
   });
 
-  connect(axisrect, &AxisRect2D::Curve2DCreated, [=]() {
+  connect(axisrect, &AxisRect2D::Curve2DCreated, this, [=]() {
     axisrect->parentPlot()->replot(
         QCustomPlot::RefreshPriority::rpQueuedRefresh);
     objectschanged();
   });
-  connect(axisrect, &AxisRect2D::StatBox2DCreated, [=]() {
+  connect(axisrect, &AxisRect2D::StatBox2DCreated, this, [=]() {
     axisrect->parentPlot()->replot(
         QCustomPlot::RefreshPriority::rpQueuedRefresh);
     objectschanged();
   });
-  connect(axisrect, &AxisRect2D::Vector2DCreated, [=]() {
+  connect(axisrect, &AxisRect2D::Vector2DCreated, this, [=]() {
     axisrect->parentPlot()->replot(
         QCustomPlot::RefreshPriority::rpQueuedRefresh);
     objectschanged();
   });
-  connect(axisrect, &AxisRect2D::Bar2DCreated, [=]() {
+  connect(axisrect, &AxisRect2D::Bar2DCreated, this, [=]() {
     axisrect->parentPlot()->replot(
         QCustomPlot::RefreshPriority::rpQueuedRefresh);
     objectschanged();
   });
-  connect(axisrect, &AxisRect2D::Pie2DCreated, [=]() {
+  connect(axisrect, &AxisRect2D::Pie2DCreated, this, [=]() {
     axisrect->parentPlot()->replot(
         QCustomPlot::RefreshPriority::rpQueuedRefresh);
     objectschanged();
   });
-  connect(axisrect, &AxisRect2D::ColorMap2DCreated, [=]() {
+  connect(axisrect, &AxisRect2D::ColorMap2DCreated, this, [=]() {
     axisrect->parentPlot()->replot(
         QCustomPlot::RefreshPriority::rpQueuedRefresh);
     objectschanged();
   });
-  connect(axisrect, &AxisRect2D::ErrorBar2DCreated, [=]() {
+  connect(axisrect, &AxisRect2D::ErrorBar2DCreated, this, [=]() {
     axisrect->parentPlot()->replot(
         QCustomPlot::RefreshPriority::rpQueuedRefresh);
     objectschanged();
   });
 
   // Removed
-  connect(axisrect, &AxisRect2D::Axis2DRemoved, [=]() {
+  connect(axisrect, &AxisRect2D::Axis2DRemoved, this, [=]() {
     axisrect->parentPlot()->replot(
         QCustomPlot::RefreshPriority::rpQueuedRefresh);
     objectschanged();
   });
-  connect(axisrect, &AxisRect2D::TextItem2DRemoved, [=]() {
+  connect(axisrect, &AxisRect2D::TextItem2DRemoved, this, [=]() {
     axisrect->parentPlot()->replot(
         QCustomPlot::RefreshPriority::rpQueuedRefresh);
     objectschanged();
   });
-  connect(axisrect, &AxisRect2D::LineItem2DRemoved, [=]() {
+  connect(axisrect, &AxisRect2D::LineItem2DRemoved, this, [=]() {
     axisrect->parentPlot()->replot(
         QCustomPlot::RefreshPriority::rpQueuedRefresh);
     objectschanged();
   });
-  connect(axisrect, &AxisRect2D::ImageItem2DRemoved, [=]() {
+  connect(axisrect, &AxisRect2D::ImageItem2DRemoved, this, [=]() {
     axisrect->parentPlot()->replot(
         QCustomPlot::RefreshPriority::rpQueuedRefresh);
     objectschanged();
   });
-  connect(axisrect, &AxisRect2D::LineSpecial2DRemoved, [=]() {
+  connect(axisrect, &AxisRect2D::LineSpecial2DRemoved, this, [=]() {
     axisrect->parentPlot()->replot(
         QCustomPlot::RefreshPriority::rpQueuedRefresh);
     objectschanged();
   });
-  connect(axisrect, &AxisRect2D::LineSpecialChannel2DRemoved, [=]() {
+  connect(axisrect, &AxisRect2D::LineSpecialChannel2DRemoved, this, [=]() {
     axisrect->parentPlot()->replot(
         QCustomPlot::RefreshPriority::rpQueuedRefresh);
     objectschanged();
   });
-  connect(axisrect, &AxisRect2D::Curve2DRemoved, [=]() {
+  connect(axisrect, &AxisRect2D::Curve2DRemoved, this, [=]() {
     axisrect->parentPlot()->replot(
         QCustomPlot::RefreshPriority::rpQueuedRefresh);
     objectschanged();
   });
-  connect(axisrect, &AxisRect2D::StatBox2DRemoved, [=]() {
+  connect(axisrect, &AxisRect2D::StatBox2DRemoved, this, [=]() {
     axisrect->parentPlot()->replot(
         QCustomPlot::RefreshPriority::rpQueuedRefresh);
     objectschanged();
   });
-  connect(axisrect, &AxisRect2D::Vector2DRemoved, [=]() {
+  connect(axisrect, &AxisRect2D::Vector2DRemoved, this, [=]() {
     axisrect->parentPlot()->replot(
         QCustomPlot::RefreshPriority::rpQueuedRefresh);
     objectschanged();
   });
-  connect(axisrect, &AxisRect2D::Bar2DRemoved, [=]() {
+  connect(axisrect, &AxisRect2D::Bar2DRemoved, this, [=]() {
     axisrect->parentPlot()->replot(
         QCustomPlot::RefreshPriority::rpQueuedRefresh);
     objectschanged();
   });
-  connect(axisrect, &AxisRect2D::Pie2DRemoved, [=]() {
+  connect(axisrect, &AxisRect2D::Pie2DRemoved, this, [=]() {
     axisrect->parentPlot()->replot(
         QCustomPlot::RefreshPriority::rpQueuedRefresh);
     objectschanged();
   });
-  connect(axisrect, &AxisRect2D::ColorMap2DRemoved, [=]() {
+  connect(axisrect, &AxisRect2D::ColorMap2DRemoved, this, [=]() {
     axisrect->parentPlot()->replot(
         QCustomPlot::RefreshPriority::rpQueuedRefresh);
     objectschanged();
   });
-  connect(axisrect, &AxisRect2D::ErrorBar2DRemoved, [=]() {
+  connect(axisrect, &AxisRect2D::ErrorBar2DRemoved, this, [=]() {
     axisrect->parentPlot()->replot(
         QCustomPlot::RefreshPriority::rpQueuedRefresh);
     objectschanged();
   });
 
   // Layer moved
-  connect(axisrect, &AxisRect2D::LayerMoved, [=]() {
+  connect(axisrect, &AxisRect2D::LayerMoved, this, [=]() {
     axisrect->parentPlot()->replot(
         QCustomPlot::RefreshPriority::rpQueuedRefresh);
     objectschanged();
@@ -7148,6 +7256,8 @@ void PropertyEditor::setObjectPropertyId() {
       "itempropertyimagepixelpositionxitem_");
   itempropertyimagepixelpositionyitem_->setPropertyId(
       "itempropertyimagepixelpositionyitem_");
+  itempropertyimagerotationitem_->setPropertyId(
+      "itempropertyimagerotationitem_");
   itempropertyimagesourceitem_->setPropertyId("itempropertyimagesourceitem_");
   itempropertyimagestrokecoloritem_->setPropertyId(
       "itempropertyimagestrokecoloritem_");
@@ -7189,8 +7299,7 @@ void PropertyEditor::setObjectPropertyId() {
       "lsplotpropertyscatterantialiaseditem_");
   lsplotpropertylegendvisibleitem_->setPropertyId(
       "lsplotpropertylegendvisibleitem_");
-  lsplotpropertylegendtextitem_->setPropertyId(
-      "lsplotpropertylegendtextitem_");
+  lsplotpropertylegendtextitem_->setPropertyId("lsplotpropertylegendtextitem_");
   // LineSpecialChannel Properties block
   channelplotpropertyxaxisitem_->setPropertyId("channelplotpropertyxaxisitem_");
   channelplotpropertyyaxisitem_->setPropertyId("channelplotpropertyyaxisitem_");

@@ -1,6 +1,7 @@
 #ifndef GRAPH2DCOMMON_H
 #define GRAPH2DCOMMON_H
 
+#include <QStringList>
 class Column;
 class Table;
 
@@ -47,12 +48,29 @@ enum class Picker : int {
   DataRemove = 4,
   DragRange = 5,
   ZoomRange = 6,
+  DataRange = 7,
 };
 
 enum class PlotType { Associated, Function };
 }  // namespace Graph2DCommon
 
 namespace PlotData {
+struct FunctionData {
+  int type;
+  QStringList functions;
+  QString parameter;
+  double from;
+  double to;
+  int points;
+  FunctionData()
+      : type(0),
+        functions(QStringList()),
+        parameter(QString()),
+        from(0.0),
+        to(0.0),
+        points(0) {}
+};
+
 struct AssociatedData {
   Table *table;
   Column *xcol;

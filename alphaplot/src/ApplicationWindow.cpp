@@ -55,6 +55,7 @@
 #include "analysis/SigmoidalFit.h"
 #include "analysis/SmoothCurveDialog.h"
 #include "analysis/SmoothFilter.h"
+#include "core/AppearanceManager.h"
 #include "core/AprojHandler.h"
 #include "core/IconLoader.h"
 #include "core/Project.h"
@@ -62,6 +63,7 @@
 #include "globals.h"
 #include "lib/XmlStreamReader.h"
 #include "table/future_Table.h"
+#include "ui/CharacterMapWidget.h"
 #include "ui/ExportDialog.h"
 #include "ui_ApplicationWindow.h"
 
@@ -121,6 +123,7 @@
 
 #include "2Dplot/Graph2DCommon.h"
 #include "2Dplot/Layout2D.h"
+#include "2Dplot/PickerTool2D.h"
 #include "2Dplot/Plot2D.h"
 #include "2Dplot/Plotcolumns.h"
 #include "2Dplot/widgets/AddPlot2DDialog.h"
@@ -133,6 +136,7 @@
 #include "3Dplot/Scatter3D.h"
 #include "3Dplot/Surface3D.h"
 #include "core/widgets/propertyeditor.h"
+#include "future/lib/XmlStreamWriter.h"
 #include "scripting/ScriptingFunctions.h"
 #include "scripting/ScriptingLangDialog.h"
 #include "scripting/widgets/ConsoleWidget.h"
@@ -164,6 +168,7 @@ ApplicationWindow::ApplicationWindow()
       graph3DToolbar(new QToolBar(tr("3D Surface"), this)),
       current_folder(new Folder(nullptr, tr("Untitled"))),
       show_windows_policy(ActiveFolder),
+      appCustomColor(false),
       appStyle(qApp->style()->objectName()),
       appColorScheme(0),
       appFont(QFont()),
@@ -207,6 +212,7 @@ ApplicationWindow::ApplicationWindow()
       multiPeakfitactive_(false),
       multiPeakfitpoints_(0),
       multiPeakfittype_(0),
+      glowstatus_(true),
       glowcolor_(Qt::red),
       glowxoffset_(0),
       glowyoffset_(0),
@@ -383,8 +389,6 @@ ApplicationWindow::ApplicationWindow()
   propertyeditor->setObjectName("propertyeditorWindow");
   addDockWidget(Qt::RightDockWidgetArea, propertyeditor);
   propertyeditor->show();
-  connect(propertyeditor, &PropertyEditor::adderrorbar, this,
-          &ApplicationWindow::addErrorBars);
 
   disableActions();
   // After initialization of QDockWidget, for toggleViewAction() to work
@@ -443,6 +447,8 @@ ApplicationWindow::ApplicationWindow()
           SLOT(clearLogInfo()));
   connect(ui_->actionDeleteFitTables, SIGNAL(triggered()), this,
           SLOT(deleteFitTables()));
+  connect(ui_->actionAddGlyphs, &QAction::triggered, this,
+          &ApplicationWindow::showAddGlyphs);
   connect(ui_->actionPreferences, SIGNAL(triggered()), this,
           SLOT(showPreferencesDialog()));
   // View menu
@@ -695,6 +701,54 @@ ApplicationWindow::ApplicationWindow()
           SLOT(addErrorBars()));
   connect(ui_->actionAddFunctionCurve, SIGNAL(triggered()), this,
           SLOT(addFunctionCurve()));
+  connect(ui_->actionLeftValue, &QAction::triggered, this,
+          &ApplicationWindow::addGraph2DAxis);
+  connect(ui_->actionLeftLog, &QAction::triggered, this,
+          &ApplicationWindow::addGraph2DAxis);
+  connect(ui_->actionLeftPi, &QAction::triggered, this,
+          &ApplicationWindow::addGraph2DAxis);
+  connect(ui_->actionLeftText, &QAction::triggered, this,
+          &ApplicationWindow::addGraph2DAxis);
+  connect(ui_->actionLeftTime, &QAction::triggered, this,
+          &ApplicationWindow::addGraph2DAxis);
+  connect(ui_->actionLeftDateTime, &QAction::triggered, this,
+          &ApplicationWindow::addGraph2DAxis);
+  connect(ui_->actionBottomValue, &QAction::triggered, this,
+          &ApplicationWindow::addGraph2DAxis);
+  connect(ui_->actionBottomLog, &QAction::triggered, this,
+          &ApplicationWindow::addGraph2DAxis);
+  connect(ui_->actionBottomPi, &QAction::triggered, this,
+          &ApplicationWindow::addGraph2DAxis);
+  connect(ui_->actionBottomText, &QAction::triggered, this,
+          &ApplicationWindow::addGraph2DAxis);
+  connect(ui_->actionBottomTime, &QAction::triggered, this,
+          &ApplicationWindow::addGraph2DAxis);
+  connect(ui_->actionBottomDateTime, &QAction::triggered, this,
+          &ApplicationWindow::addGraph2DAxis);
+  connect(ui_->actionRightValue, &QAction::triggered, this,
+          &ApplicationWindow::addGraph2DAxis);
+  connect(ui_->actionRightLog, &QAction::triggered, this,
+          &ApplicationWindow::addGraph2DAxis);
+  connect(ui_->actionRightPi, &QAction::triggered, this,
+          &ApplicationWindow::addGraph2DAxis);
+  connect(ui_->actionRightText, &QAction::triggered, this,
+          &ApplicationWindow::addGraph2DAxis);
+  connect(ui_->actionRightTime, &QAction::triggered, this,
+          &ApplicationWindow::addGraph2DAxis);
+  connect(ui_->actionRightDateTime, &QAction::triggered, this,
+          &ApplicationWindow::addGraph2DAxis);
+  connect(ui_->actionTopValue, &QAction::triggered, this,
+          &ApplicationWindow::addGraph2DAxis);
+  connect(ui_->actionTopLog, &QAction::triggered, this,
+          &ApplicationWindow::addGraph2DAxis);
+  connect(ui_->actionTopPi, &QAction::triggered, this,
+          &ApplicationWindow::addGraph2DAxis);
+  connect(ui_->actionTopText, &QAction::triggered, this,
+          &ApplicationWindow::addGraph2DAxis);
+  connect(ui_->actionTopTime, &QAction::triggered, this,
+          &ApplicationWindow::addGraph2DAxis);
+  connect(ui_->actionTopDateTime, &QAction::triggered, this,
+          &ApplicationWindow::addGraph2DAxis);
   connect(ui_->actionAddText, SIGNAL(triggered()), this, SLOT(addText()));
   graphToolsGroup->setExclusive(true);
   ui_->actionDrawArrow->setActionGroup(graphToolsGroup);
@@ -898,6 +952,7 @@ ApplicationWindow::ApplicationWindow()
           &ApplicationWindow::windowActivated);
 
   loadSettings();
+  setAppColors();
   createLanguagesList();
 
   connect(scriptEnv, SIGNAL(error(const QString &, const QString &, int)), this,
@@ -1836,6 +1891,7 @@ void ApplicationWindow::loadImage(const QString &fn) {
 Layout2D *ApplicationWindow::newGraph2D(const QString &caption) {
   Layout2D *layout2d = new Layout2D("", d_workspace, 0);
   layout2d->setAttribute(Qt::WA_DeleteOnClose);
+  layout2d->askOnCloseEvent(confirmClosePlot2D);
   QString label = caption;
   while (alreadyUsedName(label)) label = generateUniqueName(tr("Graph"));
 
@@ -1879,6 +1935,8 @@ Layout2D *ApplicationWindow::newGraph2D(const QString &caption) {
           &PropertyEditor::refreshCanvasRect);
   connect(layout2d, &Layout2D::datapoint, this,
           &ApplicationWindow::multipeakfitappendpoints);
+  connect(layout2d, &Layout2D::showContextMenu, this,
+          &ApplicationWindow::showWindowContextMenu);
 
   return layout2d;
 }
@@ -1887,6 +1945,7 @@ Layout3D *ApplicationWindow::newGraph3D(const Graph3DCommon::Plot3DType &type,
                                         const QString &caption) {
   Layout3D *layout3d = new Layout3D(type, "", d_workspace, 0);
   layout3d->setAttribute(Qt::WA_DeleteOnClose);
+  layout3d->askOnCloseEvent(confirmClosePlot3D);
   QString label = caption;
   while (alreadyUsedName(label)) label = generateUniqueName(tr("Graph"));
 
@@ -1902,6 +1961,7 @@ Layout3D *ApplicationWindow::newGraph3D(const Graph3DCommon::Plot3DType &type,
 
   layout3d->show();
   layout3d->setFocus();
+
   // window connections
   connect(layout3d, &MyWidget::closedWindow, this,
           &ApplicationWindow::closeWindow);
@@ -1913,10 +1973,13 @@ Layout3D *ApplicationWindow::newGraph3D(const Graph3DCommon::Plot3DType &type,
           &ApplicationWindow::showWindowTitleBarMenu);
   connect(layout3d, &Layout3D::dataAdded, propertyeditor,
           &PropertyEditor::populateObjectBrowser);
-  connect(layout3d, &Layout3D::mousepressevent, [=](MyWidget *widget) {
-    if (d_workspace->activeSubWindow() == widget) return;
-    widget->setNormal();
-    d_workspace->setActiveSubWindow(widget);
+  connect(layout3d, &Layout3D::showContextMenu, this,
+          &ApplicationWindow::showWindowContextMenu);
+  // QWindow doesnt pass mousepressevent to the container widget
+  // so do it here manually
+  connect(layout3d, &Layout3D::mousepressevent, this, [=]() {
+    if (d_workspace->activeSubWindow() == layout3d) return;
+    d_workspace->setActiveSubWindow(layout3d);
   });
 
   return layout3d;
@@ -1962,34 +2025,50 @@ QList<QPair<QPair<double, double>, double>>
   return data;
 }
 
-void ApplicationWindow::customizeTables(
-    const QColor &bgColor, const QColor &textColor, const QColor &headerColor,
-    const QFont &textFont, const QFont &headerFont, bool showComments) {
-  // tableBkgdColor = bgColor;
-  // tableTextColor = textColor;
-  // tableHeaderColor = headerColor;
-  // tableTextFont = textFont;
-  // tableHeaderFont = headerFont;
-  d_show_table_comments = showComments;
-
+void ApplicationWindow::customizeTables(const Table::Custom &custom) {
   QList<QMdiSubWindow *> subwindowlist = subWindowsList();
   foreach (QMdiSubWindow *subwindow, subwindowlist) {
     if (isActiveSubWindow(subwindow, SubWindowType::TableSubWindow))
-      customTable(qobject_cast<Table *>(subwindow));
+      customTable(qobject_cast<Table *>(subwindow), custom);
   }
 }
 
-void ApplicationWindow::customTable(Table *table) {
-  // comment out color handling
-  /*QColorGroup cg;
-  cg.setColor(QColorGroup::Base, QColor(tableBkgdColor));
-  cg.setColor(QColorGroup::Text, QColor(tableTextColor));
-  w->setPalette(QPalette(cg, cg, cg));
+void ApplicationWindow::customizeCommentsTables() {
+  QList<QMdiSubWindow *> subwindowlist = subWindowsList();
+  foreach (QMdiSubWindow *subwindow, subwindowlist) {
+    if (isActiveSubWindow(subwindow, SubWindowType::TableSubWindow)) {
+      Table *table = qobject_cast<Table *>(subwindow);
+      if (table) table->showComments(d_show_table_comments);
+    }
+  }
+}
 
-  w->setHeaderColor (tableHeaderColor);*/
-  table->setTextFont(tableTextFont);
-  table->setHeaderFont(tableHeaderFont);
-  table->showComments(d_show_table_comments);
+void ApplicationWindow::customTable(Table *table, const Table::Custom &custom) {
+  if (!table) return;
+
+  switch (custom) {
+    case Table::Custom::BackgroundColor:
+      (tableCustomColor) ? table->setTableBackgroundColor(tableBkgdColor)
+                         : table->setTableBackgroundColor(
+                               qApp->palette().color(QPalette::Window));
+      break;
+    case Table::Custom::HeaderColor:
+      (tableCustomColor)
+          ? table->setHeaderColor(tableHeaderColor)
+          : table->setHeaderColor(qApp->palette().color(QPalette::Text));
+      break;
+    case Table::Custom::TextColor:
+      (tableCustomColor)
+          ? table->setTableTextColor(tableBkgdColor)
+          : table->setTableTextColor(qApp->palette().color(QPalette::Text));
+      break;
+    case Table::Custom::HeaderFont:
+      table->setHeaderFont(tableHeaderFont);
+      break;
+    case Table::Custom::TextFont:
+      table->setTextFont(tableTextFont);
+      break;
+  }
 }
 
 // Used when importing an ASCII file
@@ -2063,6 +2142,7 @@ Table *ApplicationWindow::newHiddenTable(const QString &name,
 
 void ApplicationWindow::initTable(Table *table) {
   table->setWindowIcon(IconLoader::load("table", IconLoader::LightDark));
+  table->askOnCloseEvent(confirmCloseTable);
   current_folder->addWindow(table);
   table->setFolder(current_folder);
   d_workspace->addSubWindow(table);
@@ -2070,7 +2150,12 @@ void ApplicationWindow::initTable(Table *table) {
   table->showNormal();
 
   connectTable(table);
-  customTable(table);
+  customTable(table, Table::Custom::BackgroundColor);
+  customTable(table, Table::Custom::HeaderColor);
+  customTable(table, Table::Custom::TextColor);
+  customTable(table, Table::Custom::HeaderFont);
+  customTable(table, Table::Custom::TextFont);
+  table->showComments(d_show_table_comments);
 
   table->d_future_table->setPlotMenu(ui_->menuPlot);
   emit modified();
@@ -2344,18 +2429,30 @@ void ApplicationWindow::windowActivated(QMdiSubWindow *subwindow) {
     return;
   }
 
-  // glow effect
+  // will be destroyed when parent set graphicseffect to nullptr
   foreach (QMdiSubWindow *window, subWindowsList()) {
     window->setGraphicsEffect(nullptr);
+    // disable picker
+    if (isActiveSubWindow(window, SubWindowType::Plot2DSubWindow)) {
+      Layout2D *layout = qobject_cast<Layout2D *>(window);
+      layout->setGraphTool(Graph2DCommon::Picker::None);
+    }
   }
-  // will be destroyed when parent set graphicseffect to nullptr
-  QGraphicsDropShadowEffect *gloweffect = new QGraphicsDropShadowEffect;
-  // Set glow effect values
-  gloweffect->setColor(glowcolor_);
-  gloweffect->setXOffset(glowxoffset_);
-  gloweffect->setYOffset(glowyoffset_);
-  gloweffect->setBlurRadius(glowradius_);
-  subwindow->setGraphicsEffect(gloweffect);
+
+  // reset picker menu
+  pickGraphTool(ui_->actionDisableGraphTools);
+  ui_->actionDisableGraphTools->setChecked(true);
+
+  // glow effect
+  if (glowstatus_) {
+    QGraphicsDropShadowEffect *gloweffect = new QGraphicsDropShadowEffect;
+    // Set glow effect values
+    gloweffect->setColor(glowcolor_);
+    gloweffect->setXOffset(glowxoffset_);
+    gloweffect->setYOffset(glowyoffset_);
+    gloweffect->setBlurRadius(glowradius_);
+    subwindow->setGraphicsEffect(gloweffect);
+  }
 
   customToolBars(subwindow);
   customMenu(subwindow);
@@ -2412,11 +2509,21 @@ void ApplicationWindow::updateCurves(Table *t, const QString &name) {
 }
 
 void ApplicationWindow::showPreferencesDialog() {
-  ConfigDialog *cd = new ConfigDialog(this);
-  cd->setAttribute(Qt::WA_DeleteOnClose);
-  cd->setColumnSeparator(columnSeparator);
-  cd->exec();
   std::unique_ptr<SettingsDialog> settings_(new SettingsDialog);
+  connect(settings_.get(), &SettingsDialog::generalapplicationsettingsupdates,
+          this, &ApplicationWindow::updateGeneralApplicationOptions);
+  connect(settings_.get(), &SettingsDialog::generalconfirmationsettingsupdates,
+          this, &ApplicationWindow::updateGeneralConfirmOptions);
+  connect(settings_.get(), &SettingsDialog::generalappreancesettingsupdates,
+          this, &ApplicationWindow::updateGeneralAppearanceOptions);
+  connect(settings_.get(), &SettingsDialog::generalnumericformatsettingsupdates,
+          this, &ApplicationWindow::updateGeneralNumericFormatOptions);
+  connect(settings_.get(), &SettingsDialog::tablebasicsettingsupdates, this,
+          &ApplicationWindow::updateTableBasicOptions);
+  connect(settings_.get(), &SettingsDialog::tablecolorsettingsupdates, this,
+          &ApplicationWindow::updateTableColorOptions);
+  connect(settings_.get(), &SettingsDialog::tablefontsettingsupdates, this,
+          &ApplicationWindow::updateTableFontOptions);
   settings_->exec();
 }
 
@@ -2428,10 +2535,11 @@ void ApplicationWindow::setSaveSettings(bool autoSaving, int min) {
 
   killTimer(savingTimerId);
 
-  if (autoSave)
+  if (autoSave) {
     savingTimerId = startTimer(autoSaveTime * 60000);
-  else
+  } else {
     savingTimerId = 0;
+  }
 }
 
 void ApplicationWindow::changeAppStyle(const QString &s) {
@@ -2450,7 +2558,8 @@ void ApplicationWindow::changeAppStyle(const QString &s) {
 void ApplicationWindow::changeAppColorScheme(int colorScheme) {
   switch (colorScheme) {
     case 0: {
-      qApp->setStyleSheet("");
+      qApp->setStyleSheet(styleSheet());
+      setStyleSheet(styleSheet());
       QPalette pal = qApp->palette();
       QColor color = pal.color(QPalette::Active, QPalette::Base);
       d_workspace->setBackground(QBrush(color));
@@ -2463,6 +2572,7 @@ void ApplicationWindow::changeAppColorScheme(int colorScheme) {
       schemefile.open(QFile::ReadOnly | QFile::Text);
       QTextStream schemeFileStream(&schemefile);
       qApp->setStyleSheet(schemeFileStream.readAll());
+      setStyleSheet(schemeFileStream.readAll());
       d_workspace->setBackground(QBrush(QColor(32, 31, 31)));
       IconLoader::lumen_ = IconLoader::isLight(Qt::black);
       appColorScheme = 1;
@@ -2472,6 +2582,7 @@ void ApplicationWindow::changeAppColorScheme(int colorScheme) {
       schemefile.open(QFile::ReadOnly | QFile::Text);
       QTextStream schemeFileStream(&schemefile);
       qApp->setStyleSheet(schemeFileStream.readAll());
+      setStyleSheet(schemeFileStream.readAll());
       d_workspace->setBackground(QColor(200, 200, 200));
       IconLoader::lumen_ = IconLoader::isLight(Qt::black);
       appColorScheme = 2;
@@ -2481,6 +2592,7 @@ void ApplicationWindow::changeAppColorScheme(int colorScheme) {
       schemefile.open(QFile::ReadOnly | QFile::Text);
       QTextStream schemeFileStream(&schemefile);
       qApp->setStyleSheet(schemeFileStream.readAll());
+      setStyleSheet(schemeFileStream.readAll());
       d_workspace->setBackground(QColor(200, 200, 200));
       IconLoader::lumen_ = IconLoader::isLight(Qt::black);
       appColorScheme = 3;
@@ -2490,6 +2602,7 @@ void ApplicationWindow::changeAppColorScheme(int colorScheme) {
       schemefile.open(QFile::ReadOnly | QFile::Text);
       QTextStream schemeFileStream(&schemefile);
       qApp->setStyleSheet(schemeFileStream.readAll());
+      setStyleSheet(schemeFileStream.readAll());
       d_workspace->setBackground(QColor(200, 200, 200));
       IconLoader::lumen_ = IconLoader::isLight(Qt::black);
       appColorScheme = 4;
@@ -2499,6 +2612,7 @@ void ApplicationWindow::changeAppColorScheme(int colorScheme) {
       schemefile.open(QFile::ReadOnly | QFile::Text);
       QTextStream schemeFileStream(&schemefile);
       qApp->setStyleSheet(schemeFileStream.readAll());
+      setStyleSheet(schemeFileStream.readAll());
       d_workspace->setBackground(QColor(230, 230, 230));
       IconLoader::lumen_ = IconLoader::isLight(Qt::white);
       appColorScheme = 5;
@@ -2508,6 +2622,7 @@ void ApplicationWindow::changeAppColorScheme(int colorScheme) {
       schemefile.open(QFile::ReadOnly | QFile::Text);
       QTextStream schemeFileStream(&schemefile);
       qApp->setStyleSheet(schemeFileStream.readAll());
+      setStyleSheet(schemeFileStream.readAll());
       d_workspace->setBackground(QColor(230, 230, 230));
       IconLoader::lumen_ = IconLoader::isLight(Qt::white);
       appColorScheme = 6;
@@ -2517,6 +2632,7 @@ void ApplicationWindow::changeAppColorScheme(int colorScheme) {
       schemefile.open(QFile::ReadOnly | QFile::Text);
       QTextStream schemeFileStream(&schemefile);
       qApp->setStyleSheet(schemeFileStream.readAll());
+      setStyleSheet(schemeFileStream.readAll());
       d_workspace->setBackground(QColor(230, 230, 230));
       IconLoader::lumen_ = IconLoader::isLight(Qt::white);
       appColorScheme = 7;
@@ -2537,12 +2653,21 @@ void ApplicationWindow::changeAppFont(const QFont &font) {
   this->setFont(appFont);
 }
 
-void ApplicationWindow::updateConfirmOptions(bool askTables, bool askMatrices,
-                                             bool askPlots2D, bool askPlots3D,
-                                             bool askNotes) {
+void ApplicationWindow::updateGeneralConfirmOptions() {
+  QSettings settings;
+  settings.beginGroup("Confirmations");
+  bool nconfirmCloseFolder = settings.value("Folder", true).toBool();
+  bool nconfirmCloseTable = settings.value("Table", true).toBool();
+  bool nconfirmCloseMatrix = settings.value("Matrix", true).toBool();
+  bool nconfirmClosePlot2D = settings.value("Plot2D", true).toBool();
+  bool nconfirmClosePlot3D = settings.value("Plot3D", true).toBool();
+  bool nconfirmCloseNotes = settings.value("Note", true).toBool();
+  settings.endGroup();  // Confirmations
+
+  confirmCloseFolder = nconfirmCloseFolder;
   QList<QMdiSubWindow *> subwindowlist = subWindowsList();
-  if (confirmCloseTable != askTables) {
-    confirmCloseTable = askTables;
+  if (confirmCloseTable != nconfirmCloseTable) {
+    confirmCloseTable = nconfirmCloseTable;
     for (int i = 0; i < int(subwindowlist.count()); i++) {
       if (isActiveSubWindow(subwindowlist.at(i), SubWindowType::TableSubWindow))
         qobject_cast<MyWidget *>(subwindowlist.at(i))
@@ -2550,8 +2675,8 @@ void ApplicationWindow::updateConfirmOptions(bool askTables, bool askMatrices,
     }
   }
 
-  if (confirmCloseMatrix != askMatrices) {
-    confirmCloseMatrix = askMatrices;
+  if (confirmCloseMatrix != nconfirmCloseMatrix) {
+    confirmCloseMatrix = nconfirmCloseMatrix;
     for (int i = 0; i < int(subwindowlist.count()); i++) {
       if (isActiveSubWindow(subwindowlist.at(i),
                             SubWindowType::MatrixSubWindow))
@@ -2560,8 +2685,8 @@ void ApplicationWindow::updateConfirmOptions(bool askTables, bool askMatrices,
     }
   }
 
-  if (confirmClosePlot2D != askPlots2D) {
-    confirmClosePlot2D = askPlots2D;
+  if (confirmClosePlot2D != nconfirmClosePlot2D) {
+    confirmClosePlot2D = nconfirmClosePlot2D;
     for (int i = 0; i < int(subwindowlist.count()); i++) {
       if (isActiveSubWindow(subwindowlist.at(i),
                             SubWindowType::Plot2DSubWindow))
@@ -2570,8 +2695,8 @@ void ApplicationWindow::updateConfirmOptions(bool askTables, bool askMatrices,
     }
   }
 
-  if (confirmClosePlot3D != askPlots3D) {
-    confirmClosePlot3D = askPlots3D;
+  if (confirmClosePlot3D != nconfirmClosePlot3D) {
+    confirmClosePlot3D = nconfirmClosePlot3D;
     for (int i = 0; i < int(subwindowlist.count()); i++) {
       if (isActiveSubWindow(subwindowlist.at(i),
                             SubWindowType::Plot3DSubWindow))
@@ -2580,13 +2705,189 @@ void ApplicationWindow::updateConfirmOptions(bool askTables, bool askMatrices,
     }
   }
 
-  if (confirmCloseNotes != askNotes) {
-    confirmCloseNotes = askNotes;
+  if (confirmCloseNotes != nconfirmCloseNotes) {
+    confirmCloseNotes = nconfirmCloseNotes;
     for (int i = 0; i < int(subwindowlist.count()); i++) {
       if (isActiveSubWindow(subwindowlist.at(i), SubWindowType::NoteSubWindow))
         qobject_cast<MyWidget *>(subwindowlist.at(i))
             ->askOnCloseEvent(confirmCloseNotes);
     }
+  }
+}
+
+void ApplicationWindow::updateGeneralAppearanceOptions() {
+  QSettings settings;
+  settings.beginGroup("General");
+  QString nappstyle_ =
+      settings.value("Style", qApp->style()->objectName()).toString();
+  int ncolorscheme_ = settings.value("ColorScheme", 0).toInt();
+
+  settings.beginGroup("Colors");
+  bool ncustomcolors_ = settings.value("Custom", false).toBool();
+  QColor nworkspacecolor_ =
+      settings.value("Workspace", "darkGray").value<QColor>();
+  QColor npanelcolor_ =
+      settings.value("Panels", palette().window().color()).value<QColor>();
+  QColor npaneltextcolor_ =
+      settings.value("PanelsText", palette().windowText().color())
+          .value<QColor>();
+  settings.endGroup();
+  settings.endGroup();
+
+  if (nappstyle_ != appStyle) {
+    changeAppStyle(nappstyle_);
+  }
+
+  if (ncolorscheme_ != appColorScheme) {
+    changeAppColorScheme(ncolorscheme_);
+  }
+
+  if (ncustomcolors_ != appCustomColor) {
+    appCustomColor = ncustomcolors_;
+    workspaceColor = nworkspacecolor_;
+    panelsColor = npanelcolor_;
+    panelsTextColor = npaneltextcolor_;
+    setAppColors();
+  }
+}
+
+void ApplicationWindow::updateGeneralNumericFormatOptions() {
+  QSettings settings;
+  settings.beginGroup("General");
+  QString localestring =
+      settings.value("Locale", QLocale::system().name()).toString();
+  bool usegroupseperator =
+      settings.value("LocaleUseGroupSeparator", true).toBool();
+  int precision = settings.value("DecimalDigits", 6).toInt();
+  char defaultnumericformat =
+      settings.value("DefaultNumericFormat", 'g').toChar().toLatin1();
+  settings.endGroup();
+  QLocale locale;
+  (localestring == QLocale::system().name()) ? locale = QLocale::system()
+  : (localestring == QLocale::c().name())    ? locale = QLocale::c()
+  : (localestring == QLocale(QLocale::German).name())
+      ? locale = QLocale(QLocale::German)
+  : (localestring == QLocale(QLocale::French).name())
+      ? locale = QLocale(QLocale::French)
+      : locale = QLocale::system();
+
+  if (usegroupseperator)
+    locale.setNumberOptions(locale.numberOptions() &
+                            ~QLocale::OmitGroupSeparator);
+  else
+    locale.setNumberOptions(locale.numberOptions() |
+                            QLocale::OmitGroupSeparator);
+
+  if (QLocale() != locale) {
+    QLocale::setDefault(locale);
+  }
+
+  if (d_decimal_digits != precision) {
+    d_decimal_digits = precision;
+  }
+
+  if (d_default_numeric_format != defaultnumericformat) {
+    d_default_numeric_format = defaultnumericformat;
+  }
+}
+
+void ApplicationWindow::updateTableBasicOptions() {
+  QSettings settings;
+  settings.beginGroup("Tables");
+  bool nshow_table_comments = settings.value("DisplayComments", false).toBool();
+  settings.endGroup();
+  settings.beginGroup("ImportASCII");
+  QString ncolumnseparator =
+      settings.value("ColumnSeparator", "\\t").toString();
+  settings.endGroup();
+
+  if (d_show_table_comments != nshow_table_comments) {
+    d_show_table_comments = nshow_table_comments;
+    customizeCommentsTables();
+  }
+  columnSeparator = ncolumnseparator;
+}
+
+void ApplicationWindow::updateTableColorOptions() {
+  QSettings settings;
+  settings.beginGroup("Tables");
+  settings.beginGroup("ColumnColorIndicator");
+  QColor nxColorCode =
+      settings.value("xColorCode", QColor(0, 172, 109, 100)).value<QColor>();
+  QColor nyColorCode =
+      settings.value("yColorCode", QColor(204, 140, 91, 100)).value<QColor>();
+  QColor nzColorCode =
+      settings.value("zColorCode", QColor(174, 129, 255, 100)).value<QColor>();
+  QColor nxErrColorCode =
+      settings.value("xErrColorCode", QColor(255, 0, 0, 100)).value<QColor>();
+  QColor nyErrColorCode =
+      settings.value("yErrColorCode", QColor(255, 0, 0, 100)).value<QColor>();
+  QColor nnoneColorCode =
+      settings.value("noneColorCode", QColor(150, 150, 150, 100))
+          .value<QColor>();
+  settings.endGroup();
+  settings.beginGroup("Colors");
+  bool ncustomColor = settings.value("Custom", false).toBool();
+  QColor nbkgdColor =
+      settings.value("Background", qApp->palette().color(QPalette::Base))
+          .value<QColor>();
+  QColor ntextColor =
+      settings.value("Text", qApp->palette().color(QPalette::Text))
+          .value<QColor>();
+  QColor nlabelColor =
+      settings.value("Header", qApp->palette().color(QPalette::Text))
+          .value<QColor>();
+  settings.endGroup();  // Colors
+  settings.endGroup();
+  AppearanceManager::xColorCode = nxColorCode;
+  AppearanceManager::yColorCode = nyColorCode;
+  AppearanceManager::zColorCode = nzColorCode;
+  AppearanceManager::xErrColorCode = nxErrColorCode;
+  AppearanceManager::yErrColorCode = nyErrColorCode;
+  AppearanceManager::noneColorCode = nnoneColorCode;
+
+  bool customcolor = false;
+  if (tableCustomColor != ncustomColor) {
+    customcolor = true;
+    tableCustomColor = ncustomColor;
+  }
+  if (tableBkgdColor != nbkgdColor || customcolor != false) {
+    tableBkgdColor = nbkgdColor;
+    customizeTables(Table::Custom::BackgroundColor);
+  }
+  if (tableBkgdColor != tableHeaderColor || customcolor != false) {
+    tableHeaderColor = nlabelColor;
+    customizeTables(Table::Custom::HeaderColor);
+  }
+  if (tableTextColor != ntextColor || customcolor != false) {
+    tableTextColor = ntextColor;
+    customizeTables(Table::Custom::TextColor);
+  }
+}
+
+void ApplicationWindow::updateTableFontOptions() {
+  QSettings settings;
+  settings.beginGroup("Tables");
+  QStringList tableFonts = settings.value("Fonts").toStringList();
+  QFont ntableTextFont;
+  QFont ntableHeaderFont;
+  if (tableFonts.size() == 8) {
+    ntableTextFont = QFont(tableFonts[0], tableFonts[1].toInt(),
+                           tableFonts[2].toInt(), tableFonts[3].toInt());
+    ntableHeaderFont = QFont(tableFonts[4], tableFonts[5].toInt(),
+                             tableFonts[6].toInt(), tableFonts[7].toInt());
+  } else {
+    ntableTextFont = qApp->font();
+    ntableHeaderFont = qApp->font();
+  }
+  settings.endGroup();
+  if (tableTextFont != ntableTextFont) {
+    tableTextFont = ntableTextFont;
+    customizeTables(Table::Custom::TextFont);
+  }
+  if (tableHeaderFont != ntableHeaderFont) {
+    tableHeaderFont = ntableHeaderFont;
+    customizeTables(Table::Custom::HeaderFont);
   }
 }
 
@@ -2963,7 +3264,7 @@ void ApplicationWindow::restartScriptingEnv() {
 }
 
 void ApplicationWindow::openTemplate() {
-  QString filter = tr("AlphaPlot Matrix Template") + " (*.apt);;";
+  QString filter = tr("AlphaPlot 2D Graph Template") + " (*.apt);;";
   filter += tr("AlphaPlot 3D Surface Template") + " (*.ast);;";
   filter += tr("AlphaPlot Table Template") + " (*.att);;";
   filter += tr("AlphaPlot Matrix Template") + " (*.amt);;";
@@ -2985,6 +3286,11 @@ void ApplicationWindow::loadSettings() {
 #ifdef SEARCH_FOR_UPDATES
   autoSearchUpdates = settings.value("AutoSearchUpdates", false).toBool();
 #endif
+  settings.beginGroup("GlowIndicator");
+  glowstatus_ = settings.value("Show", false).toBool();
+  glowcolor_ = settings.value("Color", "red").value<QColor>();
+  glowradius_ = settings.value("Radius", 8).toDouble();
+  settings.endGroup();
   appLanguage =
       settings.value("Language", QLocale::system().name().section('_', 0, 0))
           .toString();
@@ -3062,11 +3368,16 @@ void ApplicationWindow::loadSettings() {
   settings.endGroup();  // Dialogs
 
   settings.beginGroup("Colors");
-  workspaceColor = settings.value("Workspace", "darkGray").value<QColor>();
+  appCustomColor = settings.value("Custom", false).toBool();
+  workspaceColor =
+      settings.value("Workspace", d_workspace->background().color())
+          .value<QColor>();
   // see http://doc.trolltech.com/4.2/qvariant.html for instructions on qcolor
   // <-> qvariant conversion
-  panelsColor = settings.value("Panels", "#ffffff").value<QColor>();
-  panelsTextColor = settings.value("PanelsText", "#000000").value<QColor>();
+  panelsColor =
+      settings.value("Panels", palette().window().color()).value<QColor>();
+  panelsTextColor = settings.value("PanelsText", palette().windowText().color())
+                        .value<QColor>();
   settings.endGroup();  // Colors
 
   settings.beginGroup("Paths");
@@ -3157,13 +3468,33 @@ void ApplicationWindow::loadSettings() {
     tableHeaderFont = QFont(tableFonts[4], tableFonts[5].toInt(),
                             tableFonts[6].toInt(), tableFonts[7].toInt());
   }
-
+  settings.beginGroup("ColumnColorIndicator");
+  AppearanceManager::xColorCode =
+      settings.value("xColorCode", QColor(0, 172, 109, 100)).value<QColor>();
+  AppearanceManager::yColorCode =
+      settings.value("yColorCode", QColor(204, 140, 91, 100)).value<QColor>();
+  AppearanceManager::zColorCode =
+      settings.value("zColorCode", QColor(174, 129, 255, 100)).value<QColor>();
+  AppearanceManager::xErrColorCode =
+      settings.value("xErrColorCode", QColor(255, 0, 0, 100)).value<QColor>();
+  AppearanceManager::yErrColorCode =
+      settings.value("yErrColorCode", QColor(255, 0, 0, 100)).value<QColor>();
+  AppearanceManager::noneColorCode =
+      settings.value("noneColorCode", QColor(150, 150, 150, 100))
+          .value<QColor>();
+  settings.endGroup();  // ColumnColorIndicator
   settings.beginGroup("Colors");
-  // tableBkgdColor = settings.value("Background", "#ffffff").value<QColor>();
-  // tableTextColor = settings.value("Text", "#000000").value<QColor>();
-  tableHeaderColor = settings.value("Header", "#000000").value<QColor>();
+  tableCustomColor = settings.value("Custom", false).toBool();
+  tableBkgdColor =
+      settings.value("Background", qApp->palette().color(QPalette::Base))
+          .value<QColor>();
+  tableTextColor = settings.value("Text", qApp->palette().color(QPalette::Text))
+                       .value<QColor>();
+  tableHeaderColor =
+      settings.value("Header", qApp->palette().color(QPalette::Text))
+          .value<QColor>();
   settings.endGroup();  // Colors
-  settings.endGroup();
+  settings.endGroup();  // Tables
   /* --------------- end group Tables ------------------------ */
 
   /* --------------- group 2D Plots ----------------------------- */
@@ -3313,6 +3644,11 @@ void ApplicationWindow::saveSettings() {
 #ifdef SEARCH_FOR_UPDATES
   settings.setValue("AutoSearchUpdates", autoSearchUpdates);
 #endif
+  settings.beginGroup("GlowIndicator");
+  settings.setValue("Show", glowstatus_);
+  settings.setValue("Color", glowcolor_);
+  settings.setValue("Radius", glowradius_);
+  settings.endGroup();
   settings.setValue("Language", appLanguage);
   settings.setValue("ShowWindowsPolicy", show_windows_policy);
   settings.setValue("RecentProjects", recentProjects);
@@ -3360,6 +3696,7 @@ void ApplicationWindow::saveSettings() {
   settings.endGroup();  // Dialogs
 
   settings.beginGroup("Colors");
+  settings.setValue("Custon", appCustomColor);
   settings.setValue("Workspace", workspaceColor);
   settings.setValue("Panels", panelsColor);
   settings.setValue("PanelsText", panelsTextColor);
@@ -3425,10 +3762,19 @@ void ApplicationWindow::saveSettings() {
   tableFonts << QString::number(tableHeaderFont.weight());
   tableFonts << QString::number(tableHeaderFont.italic());
   settings.setValue("Fonts", tableFonts);
+  settings.beginGroup("ColumnColorIndicator");
+  settings.setValue("xColorCode", AppearanceManager::xColorCode);
+  settings.setValue("yColorCode", AppearanceManager::yColorCode);
+  settings.setValue("zColorCode", AppearanceManager::zColorCode);
+  settings.setValue("xErrColorCode", AppearanceManager::xErrColorCode);
+  settings.setValue("yErrColorCode", AppearanceManager::yErrColorCode);
+  settings.setValue("noneColorCode", AppearanceManager::noneColorCode);
+  settings.endGroup();
 
   settings.beginGroup("Colors");
+  settings.setValue("Custom", tableCustomColor);
   settings.setValue("Background", tableBkgdColor);
-  // settings.setValue("Text", tableTextColor);
+  settings.setValue("Text", tableTextColor);
   settings.setValue("Header", tableHeaderColor);
   settings.endGroup();  // Colors
   settings.endGroup();
@@ -4357,9 +4703,9 @@ void ApplicationWindow::movePoints() {
     ui_->actionDisableGraphTools->setChecked(true);
     return;
   }
-  layout->setGraphTool(Graph2DCommon::Picker::None);
-  ui_->actionDisableGraphTools->setChecked(true);
-  QMessageBox::warning(this, tr("Warning"), tr("<h4>not implimented!</h4>"));
+  layout->setGraphTool(Graph2DCommon::Picker::DataMove);
+  //ui_->actionDisableGraphTools->setChecked(true);
+  //QMessageBox::warning(this, tr("Warning"), tr("<h4>not implimented!</h4>"));
 }
 
 void ApplicationWindow::exportPDF() {
@@ -4461,7 +4807,6 @@ void ApplicationWindow::printAllPlots() {
   connect(
       previewDialog.get(), &QPrintPreviewDialog::paintRequested,
       [=](QPrinter *printer) {
-        printer->setPageSize(QPrinter::A4);
         printer->setColorMode(QPrinter::Color);
         std::unique_ptr<QCPPainter> painter =
             std::unique_ptr<QCPPainter>(new QCPPainter(printer));
@@ -4482,10 +4827,10 @@ void ApplicationWindow::printAllPlots() {
             // comment this out if you want cosmetic thin lines (always 1 pixel
             // thick independent of pdf zoom level)
             // painter.setMode(QCPPainter::pmNonCosmetic);
-            layout->getCurrentAxisRect()->setPrintorExportJob(true);
+            layout->hideCurrentAxisRectIndicator(true);
             layout->getPlotCanwas()->toPainter(painter.get(), plotWidth,
                                                plotHeight);
-            layout->getCurrentAxisRect()->setPrintorExportJob(false);
+            layout->hideCurrentAxisRectIndicator(false);
             newpage = true;
           }
         }
@@ -4762,9 +5107,41 @@ void ApplicationWindow::showRangeSelectors() {
     ui_->actionDisableGraphTools->setChecked(true);
     return;
   }
-  layout->setGraphTool(Graph2DCommon::Picker::None);
-  ui_->actionDisableGraphTools->setChecked(true);
-  QMessageBox::warning(this, tr("Warning"), tr("<h4>not implimented!</h4>"));
+
+  QVector<Curve2D *> cvec;
+  foreach (Curve2D *curve, axisrect->getCurveVec()) {
+    if (curve->getplottype_cplot() != Graph2DCommon::PlotType::Function)
+      cvec.append(curve);
+  }
+  if (cvec.isEmpty()) {
+    QMessageBox::warning(
+        this, tr("Warning"),
+        tr("<h4>There are no compatible plots available in this layout "
+           "element.</h4><p><h4>Please add a compatible plot and try "
+           "again!</h4>"));
+    ui_->actionDisableGraphTools->setChecked(true);
+    return;
+  }
+  if (cvec.size() == 1) {
+    layout->getPickerTool()->setRangePickerCurve(cvec.at(0));
+    layout->setGraphTool(Graph2DCommon::Picker::DataRange);
+  } else {
+    QStringList list;
+    foreach (Curve2D *curve, cvec) {
+      list << curve->getdatablock_cplot()->gettable()->name() + "_" +
+                  curve->getdatablock_cplot()->getxcolumn()->name() + "_" +
+                  curve->getdatablock_cplot()->getycolumn()->name();
+    }
+    DataSetDialog *ad = new DataSetDialog(tr("Curve") + " : ", nullptr);
+    ad->setAttribute(Qt::WA_DeleteOnClose);
+    ad->setWindowTitle(tr("Choose curve"));
+    ad->setCurveNames(list);
+    connect(ad, &DataSetDialog::options, this, [=](QString text) {
+      layout->getPickerTool()->setRangePickerCurve(cvec.at(list.indexOf(text)));
+      layout->setGraphTool(Graph2DCommon::Picker::DataRange);
+    });
+    ad->exec();
+  }
 }
 
 void ApplicationWindow::showDataReader() {
@@ -4952,6 +5329,13 @@ void ApplicationWindow::showSwapLayoutDialog() {
   swapdlg->exec();
 }
 
+void ApplicationWindow::showAddGlyphs() {
+  std::unique_ptr<CharacterMapWidget> charmap =
+      std::unique_ptr<CharacterMapWidget>(new CharacterMapWidget(nullptr));
+  charmap->setModal(false);
+  charmap->exec();
+}
+
 void ApplicationWindow::addColToTable() {
   if (!isActiveSubwindow(SubWindowType::TableSubWindow)) return;
   Table *table = qobject_cast<Table *>(d_workspace->activeSubWindow());
@@ -5027,16 +5411,16 @@ void ApplicationWindow::cutSelection() {
 
 void ApplicationWindow::pasteSelection() {
   if (!d_workspace->activeSubWindow()) return;
-  MyWidget *m = qobject_cast<MyWidget *>(d_workspace->activeSubWindow());
-  if (!m) return;
+  MyWidget *widget = qobject_cast<MyWidget *>(d_workspace->activeSubWindow());
+  if (!widget) return;
 
-  if (isActiveSubWindow(m, SubWindowType::TableSubWindow))
-    qobject_cast<Table *>(m)->pasteSelection();
-  else if (isActiveSubWindow(m, SubWindowType::MatrixSubWindow))
-    qobject_cast<Matrix *>(m)->pasteSelection();
-  else if (isActiveSubWindow(m, SubWindowType::NoteSubWindow))
-    qobject_cast<Note *>(m)->textWidget()->paste();
-  else if (isActiveSubWindow(m, SubWindowType::Plot2DSubWindow)) {
+  if (isActiveSubWindow(widget, SubWindowType::TableSubWindow))
+    qobject_cast<Table *>(widget)->pasteSelection();
+  else if (isActiveSubWindow(widget, SubWindowType::MatrixSubWindow))
+    qobject_cast<Matrix *>(widget)->pasteSelection();
+  else if (isActiveSubWindow(widget, SubWindowType::NoteSubWindow))
+    qobject_cast<Note *>(widget)->textWidget()->paste();
+  else if (isActiveSubWindow(widget, SubWindowType::Plot2DSubWindow)) {
     // QMessageBox::warning(this, tr("Error"), tr("Cannot use this on
     // Graph2D!")); resizing subwindows unintentionally activate this for some
     // unknown reason issue #19
@@ -5049,57 +5433,66 @@ void ApplicationWindow::pasteSelection() {
 
 MyWidget *ApplicationWindow::clone() {
   if (!d_workspace->activeSubWindow()) return nullptr;
-  MyWidget *w = qobject_cast<MyWidget *>(d_workspace->activeSubWindow());
-  if (!w) {
+  MyWidget *widget = qobject_cast<MyWidget *>(d_workspace->activeSubWindow());
+  if (!widget) {
     QMessageBox::critical(
         this, tr("Duplicate window error"),
         tr("There are no windows available in this project!"));
     return nullptr;
   }
 
-  return clone(w);
+  return clone(widget);
 }
 
-MyWidget *ApplicationWindow::clone(MyWidget *w) {
-  if (!w) return nullptr;
+MyWidget *ApplicationWindow::clone(MyWidget *widget) {
+  if (!widget) return nullptr;
 
-  MyWidget *nw = nullptr;
+  MyWidget *newWidget = nullptr;
   QApplication::setOverrideCursor(QCursor(Qt::WaitCursor));
 
-  if (isActiveSubWindow(w, SubWindowType::Plot2DSubWindow)) {
-    QMessageBox::warning(
-        this, tr("Duplicate window error"),
-        tr("Plot2D windows cannot be duplicated! (not implimented yet)"));
-  } else if (isActiveSubWindow(w, SubWindowType::TableSubWindow)) {
-    Table *t = qobject_cast<Table *>(w);
+  if (isActiveSubWindow(widget, SubWindowType::Plot2DSubWindow)) {
+    Layout2D *layout = newGraph2D(qobject_cast<Layout2D *>(widget)->name());
+    layout->copy(qobject_cast<Layout2D *>(widget), aprojhandler_->tables(this),
+                 aprojhandler_->matrixs(this));
+    newWidget = layout;
+  } else if (isActiveSubWindow(widget, SubWindowType::TableSubWindow)) {
+    Table *t = qobject_cast<Table *>(widget);
     QString caption = generateUniqueName(tr("Table"));
-    nw = newTable(caption, t->numRows(), t->numCols());
-    qobject_cast<Table *>(nw)->copy(t);
-  } else if (isActiveSubWindow(w, SubWindowType::Plot3DSubWindow)) {
-  } else if (isActiveSubWindow(w, SubWindowType::MatrixSubWindow)) {
-    nw = newMatrix(qobject_cast<Matrix *>(w)->numRows(),
-                   qobject_cast<Matrix *>(w)->numCols());
-    qobject_cast<Matrix *>(nw)->copy(qobject_cast<Matrix *>(w));
-  } else if (isActiveSubWindow(w, SubWindowType::NoteSubWindow)) {
-    nw = newNote();
-    if (nw) qobject_cast<Note *>(nw)->setText(qobject_cast<Note *>(w)->text());
+    newWidget = newTable(caption, t->numRows(), t->numCols());
+    qobject_cast<Table *>(newWidget)->copy(t);
+  } else if (isActiveSubWindow(widget, SubWindowType::Plot3DSubWindow)) {
+    Layout3D *layout =
+        newGraph3D(qobject_cast<Layout3D *>(widget)->getPlotType(),
+                   qobject_cast<Layout3D *>(widget)->name());
+    layout->copy(qobject_cast<Layout3D *>(widget), aprojhandler_->tables(this),
+                 aprojhandler_->matrixs(this), this);
+    newWidget = layout;
+  } else if (isActiveSubWindow(widget, SubWindowType::MatrixSubWindow)) {
+    newWidget = newMatrix(qobject_cast<Matrix *>(widget)->numRows(),
+                          qobject_cast<Matrix *>(widget)->numCols());
+    qobject_cast<Matrix *>(newWidget)->copy(qobject_cast<Matrix *>(widget));
+  } else if (isActiveSubWindow(widget, SubWindowType::NoteSubWindow)) {
+    newWidget = newNote();
+    if (newWidget)
+      qobject_cast<Note *>(newWidget)->setText(
+          qobject_cast<Note *>(widget)->text());
   }
 
-  if (nw) {
-    if (isActiveSubWindow(w, SubWindowType::Plot2DSubWindow)) {
-      if (w->status() == MyWidget::Maximized) nw->showMaximized();
-    } else if (isActiveSubWindow(w, SubWindowType::Plot3DSubWindow)) {
+  if (newWidget) {
+    if (isActiveSubWindow(widget, SubWindowType::Plot2DSubWindow)) {
+      if (widget->status() == MyWidget::Maximized) newWidget->showMaximized();
+    } else if (isActiveSubWindow(widget, SubWindowType::Plot3DSubWindow)) {
     } else {
-      nw->resize(w->size());
-      nw->showNormal();
+      newWidget->resize(widget->size());
+      newWidget->showNormal();
     }
 
-    nw->setWindowLabel(w->windowLabel());
-    nw->setCaptionPolicy(w->captionPolicy());
-    setListViewLabel(nw->name(), w->windowLabel());
+    newWidget->setWindowLabel(widget->windowLabel());
+    newWidget->setCaptionPolicy(widget->captionPolicy());
+    setListViewLabel(newWidget->name(), widget->windowLabel());
   }
   QApplication::restoreOverrideCursor();
-  return nw;
+  return newWidget;
 }
 
 void ApplicationWindow::undo() {
@@ -5252,6 +5645,10 @@ void ApplicationWindow::closeWindow(MyWidget *window) {
   foreach (QTreeWidgetItem *item, items) {
     if (item) delete item;
   }
+
+  // reset picktools after deleting
+  if (isActiveSubwindow(SubWindowType::Plot2DSubWindow))
+    pickGraphTool(ui_->actionDisableGraphTools);
 
   (isActiveSubwindow(SubWindowType::MatrixSubWindow) ||
    isActiveSubwindow(SubWindowType::TableSubWindow))
@@ -5572,6 +5969,8 @@ void ApplicationWindow::showWindowContextMenu() {
   if (!subwindow) return;
 
   QMenu cm(this);
+  cm.setAttribute(Qt::WA_DeleteOnClose);
+  QMenu itemsubmenu(&cm);
   QMenu plot3D(this);
   if (isActiveSubWindow(subwindow, SubWindowType::MatrixSubWindow)) {
     Matrix *matrix = qobject_cast<Matrix *>(subwindow);
@@ -5595,7 +5994,74 @@ void ApplicationWindow::showWindowContextMenu() {
     cm.addAction(
         IconLoader::load("edit-delete-selection", IconLoader::LightDark),
         tr("Clea&r"), matrix, SLOT(clearSelection()));
+  } else if (isActiveSubWindow(subwindow, SubWindowType::Plot2DSubWindow)) {
+    Layout2D *layout = qobject_cast<Layout2D *>(subwindow);
+    cm.addAction(IconLoader::load("edit-recalculate", IconLoader::LightDark),
+                 tr("Refresh"), layout, &Layout2D::refresh);
+    cm.addAction(IconLoader::load("edit-select", IconLoader::LightDark),
+                 tr("Disable Tools"), layout, &Layout2D::ResetPicker);
+    cm.addSeparator();
+    cm.addAction(ui_->actionAddRemoveCurve);
+    cm.addAction(ui_->actionAddFunctionCurve);
+    cm.addAction(ui_->actionAddErrorBars);
+    cm.addMenu(ui_->menuAddAxis);
+    cm.addSeparator();
+    itemsubmenu.setTitle(tr("Add Items ..."));
+    itemsubmenu.addAction(ui_->actionAddText);
+    itemsubmenu.addAction(ui_->actionAddTimeStamp);
+    itemsubmenu.addAction(ui_->actionAddImage);
+    itemsubmenu.addAction(ui_->actionDrawLine);
+    itemsubmenu.addAction(ui_->actionDrawArrow);
+    itemsubmenu.addAction(ui_->actionDrawEllipse);
+    cm.addMenu(&itemsubmenu);
+    cm.addMenu(ui_->menuGraph2DAnalysis);
+    cm.addSeparator();
+    cm.addAction(ui_->actionAddNestedLayout);
+    cm.addMenu(ui_->menuAddLayout);
+    cm.addAction(ui_->actionRemoveLayout);
+    cm.addAction(ui_->actionArrangeLayout);
+    cm.addSeparator();
+    cm.addAction(IconLoader::load("edit-copy", IconLoader::LightDark),
+                 tr("Copy as Pixmap"), layout, &Layout2D::copyToClipbord);
+    cm.addAction(IconLoader::load("document-save", IconLoader::LightDark),
+                 tr("Export"), layout, &Layout2D::exportGraph);
+    cm.addAction(IconLoader::load("edit-print", IconLoader::LightDark),
+                 tr("Print"), layout, &Layout2D::print);
+  } else if (isActiveSubWindow(subwindow, SubWindowType::Plot3DSubWindow)) {
+    Layout3D *layout = qobject_cast<Layout3D *>(subwindow);
+    cm.addAction(IconLoader::load("edit-copy", IconLoader::LightDark),
+                 tr("Copy as Pixmap"), layout, &Layout3D::copyToClipbord);
+    cm.addAction(IconLoader::load("document-save", IconLoader::LightDark),
+                 tr("Export"), layout, &Layout3D::exportGraph);
+    cm.addAction(IconLoader::load("edit-print", IconLoader::LightDark),
+                 tr("Print"), layout, &Layout3D::print);
   }
+  cm.exec(QCursor::pos());
+}
+
+void ApplicationWindow::itemContextMenuRequested(Layout2D *layout,
+                                                 AxisRect2D *axisrect) {
+  layout->axisRectSetFocus(axisrect);
+  QMenu cm(this);
+  cm.setAttribute(Qt::WA_DeleteOnClose);
+  QMenu itemsubmenu(&cm);
+  cm.addAction(ui_->actionAddRemoveCurve);
+  cm.addAction(ui_->actionAddFunctionCurve);
+  cm.addAction(ui_->actionAddErrorBars);
+  cm.addMenu(ui_->menuAddAxis);
+  cm.addSeparator();
+  itemsubmenu.setTitle(tr("Add Items ..."));
+  itemsubmenu.addAction(ui_->actionAddText);
+  itemsubmenu.addAction(ui_->actionAddTimeStamp);
+  itemsubmenu.addAction(ui_->actionAddImage);
+  itemsubmenu.addAction(ui_->actionDrawLine);
+  itemsubmenu.addAction(ui_->actionDrawArrow);
+  itemsubmenu.addAction(ui_->actionDrawEllipse);
+  cm.addMenu(&itemsubmenu);
+  cm.addAction(ui_->actionAddNestedLayout);
+  cm.addMenu(ui_->menuAddLayout);
+  cm.addAction(ui_->actionRemoveLayout);
+  cm.addAction(ui_->actionArrangeLayout);
   cm.exec(QCursor::pos());
 }
 
@@ -5719,6 +6185,90 @@ void ApplicationWindow::addFunctionCurve() {
   fd->exec();
 }
 
+void ApplicationWindow::addGraph2DAxis() {
+  QMdiSubWindow *subwindow = d_workspace->activeSubWindow();
+  if (!isActiveSubWindow(subwindow, SubWindowType::Plot2DSubWindow)) return;
+
+  Layout2D *layout = qobject_cast<Layout2D *>(subwindow);
+  AxisRect2D *axisrect = layout->getCurrentAxisRect();
+  if (!axisrect) {
+    QMessageBox::warning(
+        this, tr("Warning"),
+        tr("<h4>There are no plot layout elements "
+           "selected/available in this window.</h4>"
+           "<p><h4>Please add/select a layout element and try again!</h4>"));
+    return;
+  }
+
+  QAction *action = qobject_cast<QAction *>(sender());
+  if (!action) return;
+
+  if (action == ui_->actionLeftValue)
+    axisrect->addAxis2D(Axis2D::AxisOreantation::Left,
+                        Axis2D::TickerType::Value);
+  else if (action == ui_->actionLeftLog)
+    axisrect->addAxis2D(Axis2D::AxisOreantation::Left, Axis2D::TickerType::Log);
+  else if (action == ui_->actionLeftPi)
+    axisrect->addAxis2D(Axis2D::AxisOreantation::Left, Axis2D::TickerType::Pi);
+  else if (action == ui_->actionLeftText)
+    axisrect->addAxis2D(Axis2D::AxisOreantation::Left,
+                        Axis2D::TickerType::Text);
+  else if (action == ui_->actionLeftTime)
+    axisrect->addAxis2D(Axis2D::AxisOreantation::Left,
+                        Axis2D::TickerType::Time);
+  else if (action == ui_->actionLeftDateTime)
+    axisrect->addAxis2D(Axis2D::AxisOreantation::Left,
+                        Axis2D::TickerType::DateTime);
+  else if (action == ui_->actionBottomValue)
+    axisrect->addAxis2D(Axis2D::AxisOreantation::Bottom,
+                        Axis2D::TickerType::Value);
+  else if (action == ui_->actionBottomLog)
+    axisrect->addAxis2D(Axis2D::AxisOreantation::Bottom,
+                        Axis2D::TickerType::Log);
+  else if (action == ui_->actionBottomPi)
+    axisrect->addAxis2D(Axis2D::AxisOreantation::Left, Axis2D::TickerType::Pi);
+  else if (action == ui_->actionBottomText)
+    axisrect->addAxis2D(Axis2D::AxisOreantation::Bottom,
+                        Axis2D::TickerType::Text);
+  else if (action == ui_->actionBottomTime)
+    axisrect->addAxis2D(Axis2D::AxisOreantation::Bottom,
+                        Axis2D::TickerType::Time);
+  else if (action == ui_->actionBottomDateTime)
+    axisrect->addAxis2D(Axis2D::AxisOreantation::Bottom,
+                        Axis2D::TickerType::DateTime);
+  else if (action == ui_->actionRightValue)
+    axisrect->addAxis2D(Axis2D::AxisOreantation::Right,
+                        Axis2D::TickerType::Value);
+  else if (action == ui_->actionRightLog)
+    axisrect->addAxis2D(Axis2D::AxisOreantation::Right,
+                        Axis2D::TickerType::Log);
+  else if (action == ui_->actionRightPi)
+    axisrect->addAxis2D(Axis2D::AxisOreantation::Right, Axis2D::TickerType::Pi);
+  else if (action == ui_->actionRightText)
+    axisrect->addAxis2D(Axis2D::AxisOreantation::Right,
+                        Axis2D::TickerType::Text);
+  else if (action == ui_->actionRightTime)
+    axisrect->addAxis2D(Axis2D::AxisOreantation::Right,
+                        Axis2D::TickerType::Time);
+  else if (action == ui_->actionRightDateTime)
+    axisrect->addAxis2D(Axis2D::AxisOreantation::Right,
+                        Axis2D::TickerType::DateTime);
+  else if (action == ui_->actionTopValue)
+    axisrect->addAxis2D(Axis2D::AxisOreantation::Top,
+                        Axis2D::TickerType::Value);
+  else if (action == ui_->actionTopLog)
+    axisrect->addAxis2D(Axis2D::AxisOreantation::Top, Axis2D::TickerType::Log);
+  else if (action == ui_->actionTopPi)
+    axisrect->addAxis2D(Axis2D::AxisOreantation::Top, Axis2D::TickerType::Pi);
+  else if (action == ui_->actionTopText)
+    axisrect->addAxis2D(Axis2D::AxisOreantation::Top, Axis2D::TickerType::Text);
+  else if (action == ui_->actionTopTime)
+    axisrect->addAxis2D(Axis2D::AxisOreantation::Top, Axis2D::TickerType::Time);
+  else if (action == ui_->actionTopDateTime)
+    axisrect->addAxis2D(Axis2D::AxisOreantation::Top,
+                        Axis2D::TickerType::DateTime);
+}
+
 void ApplicationWindow::updateFunctionLists(int type, QStringList &formulas) {
   int maxListSize = 10;
   if (type == 2) {
@@ -5760,16 +6310,14 @@ bool ApplicationWindow::newFunctionPlot(const int type,
       datapair = generateFunctiondata(type, formulas, var, ranges, points);
       if (!datapair.first && !datapair.second) return false;
       Layout2D *layout = newGraph2D();
-      QString xlabel, ylabel;
-      if (formulas.size() == 2) {
-        xlabel = formulas.at(0);
-        ylabel = formulas.at(1);
-      } else if (formulas.size() == 1) {
-        xlabel = "x";
-        ylabel = formulas.at(0);
-      }
-      layout->generateFunction2DPlot(datapair.first, datapair.second, xlabel,
-                                     ylabel);
+      PlotData::FunctionData funcdata;
+      funcdata.type = type;
+      funcdata.functions = formulas;
+      funcdata.parameter = var;
+      funcdata.from = ranges.at(0);
+      funcdata.to = ranges.at(1);
+      funcdata.points = points;
+      layout->generateFunction2DPlot(datapair.first, datapair.second, funcdata);
       return true;
     }
     default:
@@ -5801,9 +6349,17 @@ Curve2D *ApplicationWindow::addFunctionPlot(
         ylabel = formulas.at(0);
       }
       label = "f(" + xlabel + "): " + ylabel;
-      curve = axisrect->addFunction2DPlot(datapair.first, datapair.second,
-                                          axisrect->getXAxis(0),
-                                          axisrect->getYAxis(0), label);
+      // func data
+      PlotData::FunctionData funcdata;
+      funcdata.type = type;
+      funcdata.functions = formulas;
+      funcdata.parameter = var;
+      funcdata.from = ranges.at(0);
+      funcdata.to = ranges.at(1);
+      funcdata.points = points;
+      curve = axisrect->addFunction2DPlot(
+          funcdata, datapair.first, datapair.second, axisrect->getXAxis(0),
+          axisrect->getYAxis(0), label);
       return curve;
     }
     default:
@@ -6074,7 +6630,9 @@ void ApplicationWindow::addNestedLayout() {
   if (!isActiveSubwindow(SubWindowType::Plot2DSubWindow)) return;
   Layout2D *layout = qobject_cast<Layout2D *>(d_workspace->activeSubWindow());
   // layout->generateLayoutInset2D();
-  qDebug() << "not implimented";
+  QMessageBox::warning(
+      this, tr("Warning"),
+      tr("<h4>not implimented!</h4>"));
 }
 
 void ApplicationWindow::addLayout(
@@ -6239,31 +6797,33 @@ void ApplicationWindow::connectTable(Table *table) {
   table->askOnCloseEvent(confirmCloseTable);
 }
 
-/*void ApplicationWindow::setAppColors(const QColor &wc, const QColor &pc,
-                                     const QColor &tpc) {
+void ApplicationWindow::setAppColors() {
   // comment out setting color for now
-  if (workspaceColor != wc)
-  {
-          workspaceColor = wc;
-          d_workspace->setPaletteBackgroundColor (wc);
+  if (appCustomColor) {
+    QPalette pale = qApp->palette();
+    pale.setColor(QPalette::Base, panelsColor);
+    // pal.setColor(QPalette::Window, panelsColor);
+    pale.setColor(QPalette::Button, panelsColor);
+    pale.setColor(QPalette::ToolTipBase, panelsColor);
+    qApp->setPalette(pale);
+    QPalette palet = qApp->palette();
+    palet.setColor(QPalette::Text, panelsTextColor);
+    palet.setColor(QPalette::WindowText, panelsTextColor);
+    palet.setColor(QPalette::Foreground, panelsTextColor);
+    palet.setColor(QPalette::ToolTipText, panelsTextColor);
+    palet.setColor(QPalette::PlaceholderText, panelsTextColor);
+    palet.setColor(QPalette::ButtonText, panelsTextColor);
+    palet.setColor(QPalette::BrightText, panelsTextColor);
+    qApp->setPalette(palet);
+    QPalette pal = d_workspace->palette();
+    d_workspace->setBackground(QBrush(workspaceColor));
+  } else {
+    qApp->setStyle(appStyle);
+    qApp->setStyleSheet(styleSheet());
+    setStyleSheet(styleSheet());
+    changeAppColorScheme(appColorScheme);
   }
-
-  if (panelsColor == pc && panelsTextColor == tpc)
-          return;
-
-  panelsColor = pc;
-  panelsTextColor = tpc;
-
-  QColorGroup cg;
-  cg.setColor(QColorGroup::Base, QColor(panelsColor) );
-  qApp->setPalette(QPalette(cg, cg, cg));
-
-  cg.setColor(QColorGroup::Text, QColor(panelsTextColor) );
-  cg.setColor(QColorGroup::WindowText, QColor(panelsTextColor) );
-  cg.setColor(QColorGroup::HighlightedText, QColor(panelsTextColor) );
-  lv->setPalette(QPalette(cg, cg, cg));
-  results->setPalette(QPalette(cg, cg, cg));
-}*/
+}
 
 Layout3D *ApplicationWindow::plot3DMatrix(
     const Graph3DCommon::Plot3DType &plottype) {
@@ -6452,6 +7012,56 @@ void ApplicationWindow::verticalTranslate() {
   }*/
 }
 
+void ApplicationWindow::updateGeneralApplicationOptions() {
+  QSettings settings;
+  settings.beginGroup("General");
+  settings.beginGroup("GlowIndicator");
+  bool nglowstatus = settings.value("Show", false).toBool();
+  QColor nglowcolor = settings.value("Color", "red").value<QColor>();
+  double nglowradius = settings.value("Radius", 8).toDouble();
+  settings.endGroup();
+  QString napplanguage =
+      settings.value("Language", QLocale::system().name().section('_', 0, 0))
+          .toString();
+  QString ndefaultscriptinglang =
+      settings.value("ScriptingLang", "muParser").toString();
+  bool nautosave = settings.value("AutoSave", true).toBool();
+  int nautosavetime = settings.value("AutoSaveTime", 15).toInt();
+  int nundolimit = settings.value("UndoLimit", 10).toInt();
+  QStringList applicationFont = settings.value("Font").toStringList();
+  if (applicationFont.size() == 4)
+    QFont napplicationfont_ =
+        QFont(applicationFont.at(0), applicationFont.at(1).toInt(),
+              applicationFont.at(2).toInt(), applicationFont.at(3).toInt());
+#ifdef SEARCH_FOR_UPDATES
+  bool nautosearchupdates_ =
+      settings.value("AutoSearchUpdates", false).toBool();
+  autoSearchUpdates = nautosearchupdates_;
+#endif
+  settings.endGroup();
+  glowcolor_ = nglowcolor;
+  glowradius_ = nglowradius;
+  if (nglowstatus != glowstatus_) {
+    glowstatus_ = nglowstatus;
+    windowActivated(d_workspace->activeSubWindow());
+  }
+
+  setSaveSettings(nautosave, nautosavetime);
+  if (undoLimit != nundolimit) {
+    undoLimit = nundolimit;
+    d_project->undoStack()->setUndoLimit(undoLimit);
+  }
+  QFont applicationfontfont =
+      QFont(applicationFont.at(0), applicationFont.at(1).toInt(),
+            applicationFont.at(2).toInt(), applicationFont.at(3).toInt());
+  if (applicationfontfont.family() != appFont.family() ||
+      applicationfontfont.pointSize() != appFont.pointSize() ||
+      applicationfontfont.weight() != appFont.weight() ||
+      applicationfontfont.italic() != appFont.italic()) {
+    changeAppFont(applicationfontfont);
+  }
+}
+
 void ApplicationWindow::fitMultiPeakGaussian() {
   fitMultiPeak(static_cast<int>(MultiPeakFit::Gauss));
 }
@@ -6511,27 +7121,40 @@ void ApplicationWindow::multipeakfitappendpoints(Curve2D *curve, double x,
     multipeakfitvalues_ << newpair;
     ui_->statusBar->showMessage(
         QString("Selected Points << x=%1, y=%2").arg(x).arg(y));
+    QMessageBox::information(
+        this, tr("Multi Peakfit"),
+        tr("Data point selected") + QString(" x=%1, y=%2. ").arg(x).arg(y) +
+            tr("Data point") + QString(" %1 ").arg(multipeakfitvalues_.size()) +
+            tr("out of") + QString(" %1 ").arg(multiPeakfitpoints_));
   } else {
     if (multipeakfitvalues_.last().first == curve) {
+      bool duplicate = false;
       foreach (auto p, multipeakfitvalues_) {
-        if (p.second.first == x && p.second.second == y) {
-          pickGraphTool(ui_->actionDisableGraphTools);
-          QMessageBox::critical(
-              this, tr("Error"),
-              tr("Same data points selected twice! "
-                 "Please select different data points from the plot."
-                 "Aborting Multipeakfit!"));
-          multipeakfitvalues_.erase(multipeakfitvalues_.begin(),
-                                    multipeakfitvalues_.end());
-          multiPeakfitactive_ = false;
-          multiPeakfitpoints_ = 0;
-          ui_->statusBar->clearMessage();
-          return;
-        }
+        if (p.second.first == x && p.second.second == y) duplicate = true;
+      }
+      if (duplicate) {
+        pickGraphTool(ui_->actionDisableGraphTools);
+        multipeakfitvalues_.erase(multipeakfitvalues_.begin(),
+                                  multipeakfitvalues_.end());
+        multiPeakfitactive_ = false;
+        multiPeakfitpoints_ = 0;
+        ui_->statusBar->clearMessage();
+        QMessageBox::warning(
+            this, tr("Error"),
+            tr("Same data points selected twice! "
+               "Please select different data points from the plot."
+               "Aborting Multipeakfit!"));
+        return;
       }
       multipeakfitvalues_ << newpair;
       ui_->statusBar->showMessage(ui_->statusBar->currentMessage() +
                                   QString(" << x=%1, y=%2").arg(x).arg(y));
+      QMessageBox::information(
+          this, tr("Multi Peakfit"),
+          tr("Data point selected") + QString(" x=%1, y=%2. ").arg(x).arg(y) +
+              tr("Data point") +
+              QString(" %1 ").arg(multipeakfitvalues_.size()) + tr("out of") +
+              QString(" %1 ").arg(multiPeakfitpoints_));
     } else {
       pickGraphTool(ui_->actionDisableGraphTools);
       multipeakfitvalues_.erase(multipeakfitvalues_.begin(),
@@ -6539,10 +7162,10 @@ void ApplicationWindow::multipeakfitappendpoints(Curve2D *curve, double x,
       multiPeakfitactive_ = false;
       multiPeakfitpoints_ = 0;
       ui_->statusBar->clearMessage();
-      QMessageBox::critical(this, tr("Error"),
-                            tr("Data Points from different plots selected. "
-                               "Please select data points from the same plot."
-                               "Aborting Multipeakfit!"));
+      QMessageBox::warning(this, tr("Error"),
+                           tr("Data Points from different plots selected. "
+                              "Please select data points from the same plot."
+                              "Aborting Multipeakfit!"));
       return;
     }
   }
@@ -6719,37 +7342,61 @@ void ApplicationWindow::parseCommandLineArguments(const QStringList &args) {
 }
 
 void ApplicationWindow::createLanguagesList() {
-  //  appTranslator = new QTranslator(this);
-  //  qtTranslator = new QTranslator(this);
-  //  qApp->installTranslator(appTranslator);
-  //  qApp->installTranslator(qtTranslator);
+  appTranslator = new QTranslator(this);
+  qtTranslator = new QTranslator(this);
+  qApp->installTranslator(appTranslator);
+  qApp->installTranslator(qtTranslator);
 
-  //  qmPath = TS_PATH;
+  qmPath = TS_PATH;
 
-  //  QDir dir(qmPath);
-  //  QStringList fileNames = dir.entryList("AlphaPlot_*.qm");
-  //  if (fileNames.size() == 0) {
-  //    // fall back to looking in the executable's directory
-  //    qmPath = QFileInfo(QCoreApplication::applicationFilePath()).path() +
-  //             "/translations";
-  //    dir.setPath(qmPath);
-  //    fileNames = dir.entryList("AlphaPlot_*.qm");
-  //  }
-  //  for (int i = 0; i < static_cast<int>(fileNames.size()); i++) {
-  //    QString locale = fileNames[i];
-  //    locale = locale.mid(locale.find('_') + 1);
-  //    locale.truncate(locale.find('.'));
-  //    locales.push_back(locale);
-  //  }
-  //  locales.push_back("en");
-  //  locales.sort();
+  QString lng;   // lang, as en_GB
+  QString slng;  // short lang, as en
+  lng = QLocale().name();
+  {
+    if (lng == "C") lng = "en";
+    int i = lng.indexOf(QString("."));
+    if (i >= 0) lng = lng.left(i);
+    i = lng.indexOf(QString("_"));
+    if (i >= 0)
+      slng = lng.left(i);
+    else
+      slng = lng;
+  }
+  if (slng.size() > 2) slng = slng.left(2);
 
-  //  if (appLanguage != "en") {
-  //    if (!appTranslator->load("AlphaPlot_" + appLanguage, qmPath))
-  //      appTranslator->load("AlphaPlot_" + appLanguage);
-  //    if (!qtTranslator->load("qt_" + appLanguage, qmPath + "/qt"))
-  //      qtTranslator->load("qt_" + appLanguage);
-  //  }
+  QDir dir(qmPath);
+  QStringList fileNames = dir.entryList(QStringList("alphaplot_*.qm"));
+  if (fileNames.size() == 0) {
+    // fall back to looking in the executable's directory
+    qmPath = QFileInfo(QCoreApplication::applicationFilePath()).path() +
+             "/translations";
+    dir.setPath(qmPath);
+    fileNames = dir.entryList(QStringList("alphaplot_*.qm"));
+  }
+  for (int i = 0; i < static_cast<int>(fileNames.size()); i++) {
+    QString locale = fileNames[i];
+    locale = locale.mid(locale.indexOf('_') + 1);
+    locale.truncate(locale.indexOf('.'));
+    locales.push_back(locale);
+  }
+  locales.push_back("en");
+  locales.sort();
+  AlphaPlot::setLocales(locales);
+
+  if (appLanguage != "en") {
+    if (!appTranslator->load("alphaplot_" + appLanguage, qmPath))
+      if (!appTranslator->load("alphaplot_" + appLanguage))
+        if (!appTranslator->load("alphaplot_" + lng, qmPath))
+          if (!appTranslator->load("alphaplot_" + lng))
+            if (!appTranslator->load("alphaplot_" + slng, qmPath))
+              appTranslator->load("alphaplot_" + slng);
+    if (!qtTranslator->load("qt_" + appLanguage, qmPath + "/qt"))
+      if (!qtTranslator->load("qt_" + appLanguage))
+        if (!qtTranslator->load("qt_" + lng, qmPath + "/qt"))
+          if (!qtTranslator->load("qt_" + lng))
+            if (!qtTranslator->load("qt_" + slng, qmPath + "/qt"))
+              qtTranslator->load("qt_" + slng);
+  }
 }
 
 void ApplicationWindow::switchToLanguage(int param) {
@@ -7610,15 +8257,17 @@ void ApplicationWindow::dropFolderItems(QTreeWidgetItem *dest) {
 
   Folder *dest_f = static_cast<FolderTreeWidgetItem *>(dest)->folder();
 
-  QTreeWidgetItem *it;
+  QTreeWidgetItem *it = nullptr;
   QStringList subfolders = dest_f->subfolders();
   bool stopdrag = false;
   QList<MyWidget *> draggedwidgets;
 
   foreach (it, draggedItems) {
-    MyWidget *w = dynamic_cast<WindowTableWidgetItem *>(it)->window();
-    if (w) {
-      draggedwidgets << w;
+    if (it->type() != FolderTreeWidget::ItemType::Folders) {
+      MyWidget *w = dynamic_cast<WindowTableWidgetItem *>(it)->window();
+      if (w) {
+        draggedwidgets << w;
+      }
     }
   }
 
@@ -7628,10 +8277,12 @@ void ApplicationWindow::dropFolderItems(QTreeWidgetItem *dest) {
       Layout2D *layout = qobject_cast<Layout2D *>(w);
       QList<MyWidget *> dependson = layout->dependentTableMatrix();
       foreach (QTreeWidgetItem *depitems, draggedItems) {
-        MyWidget *depw =
-            dynamic_cast<WindowTableWidgetItem *>(depitems)->window();
-        if (depw) {
-          if (dependson.contains(depw)) dependson.removeOne(depw);
+        if (it->type() != FolderTreeWidget::ItemType::Folders) {
+          MyWidget *depw =
+              dynamic_cast<WindowTableWidgetItem *>(depitems)->window();
+          if (depw) {
+            if (dependson.contains(depw)) dependson.removeOne(depw);
+          }
         }
       }
       if (dependson.size() > 0) stopdrag = true;
@@ -7639,10 +8290,12 @@ void ApplicationWindow::dropFolderItems(QTreeWidgetItem *dest) {
       Layout3D *layout = qobject_cast<Layout3D *>(w);
       QList<MyWidget *> dependson = layout->dependentTableMatrix();
       foreach (QTreeWidgetItem *depitems, draggedItems) {
-        MyWidget *depw =
-            dynamic_cast<WindowTableWidgetItem *>(depitems)->window();
-        if (depw) {
-          if (dependson.contains(depw)) dependson.removeOne(depw);
+        if (it->type() != FolderTreeWidget::ItemType::Folders) {
+          MyWidget *depw =
+              dynamic_cast<WindowTableWidgetItem *>(depitems)->window();
+          if (depw) {
+            if (dependson.contains(depw)) dependson.removeOne(depw);
+          }
         }
       }
       if (dependson.size() > 0) stopdrag = true;
@@ -7739,9 +8392,9 @@ void ApplicationWindow::moveFolder(FolderTreeWidgetItem *src,
   dest_f->setBirthDate(src_f->birthDate());
   dest_f->setModificationDate(src_f->modificationDate());
 
-  FolderTreeWidgetItem *copy_item = new FolderTreeWidgetItem(dest, dest_f);
-  copy_item->setText(0, src_f->name());
-  dest_f->setFolderTreeWidgetItem(copy_item);
+  // FolderTreeWidgetItem *copy_item = new FolderTreeWidgetItem(dest, dest_f);
+  // copy_item->setText(0, src_f->name());
+  // dest_f->setFolderTreeWidgetItem(copy_item);
 
   QList<MyWidget *> lst = QList<MyWidget *>(src_f->windowsList());
   foreach (MyWidget *w, lst) {
@@ -7762,9 +8415,9 @@ void ApplicationWindow::moveFolder(FolderTreeWidgetItem *src,
       dest_f->setBirthDate(src_f->birthDate());
       dest_f->setModificationDate(src_f->modificationDate());
 
-      copy_item = new FolderTreeWidgetItem(copy_item, dest_f);
-      copy_item->setText(0, src_f->name());
-      dest_f->setFolderTreeWidgetItem(copy_item);
+      // copy_item = new FolderTreeWidgetItem(copy_item, dest_f);
+      // copy_item->setText(0, src_f->name());
+      // dest_f->setFolderTreeWidgetItem(copy_item);
 
       lst = QList<MyWidget *>(src_f->windowsList());
       foreach (MyWidget *w, lst) {
@@ -8741,6 +9394,16 @@ void ApplicationWindow::loadIcons() {
       IconLoader::load("graph-y-error", IconLoader::LightDark));
   ui_->actionAddFunctionCurve->setIcon(
       IconLoader::load("math-fofx", IconLoader::LightDark));
+  ui_->menuAddAxis->setIcon(
+      IconLoader::load("graph2d-axis-left", IconLoader::LightDark));
+  ui_->menuAddTopAxis->setIcon(
+      IconLoader::load("graph2d-axis-top", IconLoader::LightDark));
+  ui_->menuAddBottomAxis->setIcon(
+      IconLoader::load("graph2d-axis-bottom", IconLoader::LightDark));
+  ui_->menuAddLeftAxis->setIcon(
+      IconLoader::load("graph2d-axis-left", IconLoader::LightDark));
+  ui_->menuAddRightAxis->setIcon(
+      IconLoader::load("graph2d-axis-right", IconLoader::LightDark));
   ui_->actionAddText->setIcon(
       IconLoader::load("draw-text", IconLoader::LightDark));
   ui_->actionDrawArrow->setIcon(

@@ -36,7 +36,8 @@ class Axis2D : public QCPAxis {
     Time = 5,
     DateTime = 6
   };
-  Axis2D(AxisRect2D *parent, AxisType type, Axis2D::TickerType tickertype);
+  Axis2D(AxisRect2D *parent, const AxisType type,
+         const Axis2D::TickerType tickertype);
   ~Axis2D();
 
   enum class AxisOreantation { Left = 0, Bottom = 1, Right = 2, Top = 3 };
@@ -61,8 +62,8 @@ class Axis2D : public QCPAxis {
   int getoffset_axis() const;
   double getfrom_axis() const;
   double getto_axis() const;
-  Axis2D::AxisScaleType getscaletype_axis();
-  AxisOreantation getorientation_axis();
+  Axis2D::AxisScaleType getscaletype_axis() const;
+  AxisOreantation getorientation_axis() const;
   Axis2D::TickerType gettickertype_axis() const;
   bool getinverted_axis() const;
   QColor getstrokecolor_axis() const;
@@ -100,6 +101,8 @@ class Axis2D : public QCPAxis {
   AxisLabelFormat getticklabelformat_axis() const;
   int getticklabelprecision_axis() const;
 
+  QString getname_axis() const;
+  uint getnumber_axis() const;
   QSharedPointer<QCPAxisTicker> getticker_axis();
 
   // setters
@@ -144,7 +147,7 @@ class Axis2D : public QCPAxis {
   void setticklabelside_axis(const AxisLabelSide &side);
   void setticklabelformat_axis(const AxisLabelFormat &axisformat);
   void setticklabelprecision_axis(const int value);
-  void settickertext(Column *col, int from, int to);
+  void settickertext(Column *col, const int from, const int to);
 
   void save(XmlStreamWriter *xmlwriter);
   bool load(XmlStreamReader *xmlreader);

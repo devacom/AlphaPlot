@@ -13,6 +13,7 @@ class Column;
 class DataBlockSurface3D;
 class XmlStreamWriter;
 class XmlStreamReader;
+class ApplicationWindow;
 using namespace QtDataVisualization;
 
 class Surface3D : public QObject {
@@ -36,15 +37,20 @@ class Surface3D : public QObject {
 
   void save(XmlStreamWriter *xmlwriter, const bool saveastemplate = false);
   void load(XmlStreamReader *xmlreader, QList<Table *> tabs,
-            QList<Matrix *> mats);
+            QList<Matrix *> mats, ApplicationWindow *app);
 
  signals:
   void dataAdded();
 
  private:
+  void loadplot(XmlStreamReader *xmlreader, QList<Table *> tabs,
+                QList<Matrix *> mats, ApplicationWindow *app);
+  Table *getTableByName(QList<Table *> tabs, const QString name);
+  Matrix *getMatrixByName(QList<Matrix *> mats, const QString name);
   Q3DSurface *graph_;
   QSurface3DSeries::DrawFlag plotType_;
   QVector<DataBlockSurface3D *> data_;
+  int counter_;
 };
 
 #endif  // SURFACE3D_H

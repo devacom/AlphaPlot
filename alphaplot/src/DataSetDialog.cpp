@@ -27,10 +27,6 @@
  *                                                                         *
  ***************************************************************************/
 #include "DataSetDialog.h"
-#include "2Dplot/AxisRect2D.h"
-#include "2Dplot/Graph2DCommon.h"
-#include "2Dplot/Plotcolumns.h"
-#include "ApplicationWindow.h"
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -40,6 +36,11 @@
 #include <QLineEdit>
 #include <QPushButton>
 #include <QVBoxLayout>
+
+#include "2Dplot/AxisRect2D.h"
+#include "2Dplot/Graph2DCommon.h"
+#include "2Dplot/Plotcolumns.h"
+#include "ApplicationWindow.h"
 
 DataSetDialog::DataSetDialog(const QString& text, QWidget* parent,
                              Qt::WindowFlags fl)
@@ -71,14 +72,13 @@ DataSetDialog::DataSetDialog(const QString& text, QWidget* parent,
   mainLayout->addWidget(groupBox1);
   mainLayout->addLayout(bottomLayout);
 
-  connect(buttonOk, SIGNAL(clicked()), this, SLOT(accept()));
-  connect(buttonCancel, SIGNAL(clicked()), this, SLOT(reject()));
+  connect(buttonOk, &QPushButton::clicked, this, &DataSetDialog::accept);
+  connect(buttonCancel, &QPushButton::clicked, this, &DataSetDialog::reject);
 }
 
 void DataSetDialog::accept() {
   if (operation.isEmpty()) {
     emit options(boxName->currentText());
-    qDebug() << "no analyzable curves";
   } else if (axisrect_) {
     ApplicationWindow* app = qobject_cast<ApplicationWindow*>(this->parent());
     if (app) app->analyzeCurve(axisrect_, operation, boxName->currentText());
@@ -90,8 +90,8 @@ void DataSetDialog::setCurveNames(const QStringList& names) {
   boxName->addItems(names);
 }
 
-void DataSetDialog::setCurentDataSet(const QString& s) {
-  int row = boxName->findText(s);
+void DataSetDialog::setCurentDataSet(const QString& set) {
+  int row = boxName->findText(set);
   boxName->setCurrentIndex(row);
 }
 

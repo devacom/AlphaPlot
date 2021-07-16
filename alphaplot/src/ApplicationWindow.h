@@ -176,7 +176,7 @@ class ApplicationWindow : public QMainWindow,
     HorizontalGroupedBars = 24,
     ScatterYError = 25,
     ScatterXError = 26,
-    ScatterXYError =27
+    ScatterXYError = 27
   };
 
   QTranslator* appTranslator;
@@ -264,7 +264,7 @@ class ApplicationWindow : public QMainWindow,
   void changeAppStyle(const QString& s);
   void changeAppColorScheme(int colorScheme);
   void changeAppFont(const QFont& font);
-  // void setAppColors(const QColor& wc, const QColor& pc, const QColor& tpc);
+  void setAppColors();
   //@}
 
   void addLayout(const Graph2DCommon::AddLayoutElement& position);
@@ -327,6 +327,7 @@ class ApplicationWindow : public QMainWindow,
 
   Function2DDialog* functionDialog();
   void addFunctionCurve();
+  void addGraph2DAxis();
   void clearFitFunctionsList();
   void saveFitFunctionsList(const QStringList& l);
   void clearSurfaceFunctionsList();
@@ -382,10 +383,9 @@ class ApplicationWindow : public QMainWindow,
 
   void connectTable(Table* table);
   void initTable(Table* table);
-  void customTable(Table* table);
-  void customizeTables(const QColor& bgColor, const QColor& textColor,
-                       const QColor& headerColor, const QFont& textFont,
-                       const QFont& headerFont, bool showComments);
+  void customTable(Table* table, const Table::Custom &custom);
+  void customizeTables(const Table::Custom &custom);
+  void customizeCommentsTables();
 
   void importASCII();
   void importASCII(const QStringList& files, int import_mode,
@@ -443,7 +443,7 @@ class ApplicationWindow : public QMainWindow,
   //! \name MDI Windows
   //@{
   MyWidget* clone();
-  MyWidget* clone(MyWidget*);
+  MyWidget* clone(MyWidget*widget);
 
   //!  Called when the user presses F2 and an item is selected in lv.
   void renameWindow(QTreeWidgetItem* item, int, const QString& text);
@@ -607,6 +607,7 @@ class ApplicationWindow : public QMainWindow,
   void showPlotAssociations(int curve);
 
   void showWindowContextMenu();
+  void itemContextMenuRequested(Layout2D *layout, AxisRect2D *axisrect);
   void showWindowTitleBarMenu();
   void showWindowPopupMenu(const QPoint& p);
 
@@ -633,6 +634,7 @@ class ApplicationWindow : public QMainWindow,
   void showColumnStatistics();
   void showFitDialog();
   void showSwapLayoutDialog();
+  void showAddGlyphs();
   void showPreferencesDialog();
   void savitzkySmooth();
   void fFTFilterSmooth();
@@ -649,8 +651,13 @@ class ApplicationWindow : public QMainWindow,
   void horizontalTranslate();
   void verticalTranslate();
 
-  void updateConfirmOptions(bool askTables, bool askMatrixes, bool askPlots2D,
-                            bool askPlots3D, bool askNotes);
+  void updateGeneralApplicationOptions();
+  void updateGeneralConfirmOptions();
+  void updateGeneralAppearanceOptions();
+  void updateGeneralNumericFormatOptions();
+  void updateTableBasicOptions();
+  void updateTableColorOptions();
+  void updateTableFontOptions();
 
   //! \name Plot3D Tools
   //@{
@@ -907,6 +914,7 @@ class ApplicationWindow : public QMainWindow,
   ShowWindowsPolicy show_windows_policy;
   enum { MaxRecentProjects = 10 };
 
+  bool appCustomColor;
   QColor workspaceColor;
   QColor panelsColor;
   QColor panelsTextColor;
@@ -984,6 +992,7 @@ class ApplicationWindow : public QMainWindow,
   bool copiedLayer;
   bool strip_spaces;
   bool simplify_spaces;
+  bool tableCustomColor;
   QStringList recentProjects;
   bool saved;
   bool showPlot3DProjection;
@@ -1135,11 +1144,11 @@ class ApplicationWindow : public QMainWindow,
   int multiPeakfitpoints_;
   int multiPeakfittype_;
   QVector<QPair<Curve2D*, QPair<double, double>>> multipeakfitvalues_;
+  bool glowstatus_;
   QColor glowcolor_;
   double glowxoffset_;
   double glowyoffset_;
   double glowradius_;
-
 
  private slots:
   void multipeakfitappendpoints(Curve2D* curve, double x, double y);
